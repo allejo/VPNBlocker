@@ -1,0 +1,6 @@
+[submodule "bztoolkit"]
+	path = bztoolkit
+	url = https://github.com/allejo/bztoolkit.git
+[submodule "JsonObject"]
+	path = JsonObject
+	url = git@github.com:allejo/JsonObject.git
