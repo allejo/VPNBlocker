@@ -25,7 +25,7 @@ THE SOFTWARE.
 
 #include "bzfsAPI.h"
 #include "plugin_utils.h"
-#include "JsonObject.h"
+#include "JsonObject/JsonObject.h"
 
 static std::string CONFIG_EMAIL;
 static std::string CONFIG_URL;
@@ -146,7 +146,7 @@ bool VPNBlocker::SlashCommand (int playerID, bz_ApiString command, bz_ApiString 
     return false;
 }
 
-void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int size, bool complete)
+void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*size*/, bool complete)
 {
     std::string webData = (const char*)data;
 
