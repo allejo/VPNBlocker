@@ -303,7 +303,7 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
         case vVerified:
         {
             int bzID = 0;
-            bool makeCall = true;
+            bool allowed = false;
             bz_BasePlayerRecord *pr = bz_getPlayerByIndex(playerID);
 
             try
@@ -314,26 +314,26 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
 
             if (pr->verified)
             {
-                makeCall = (MAX_BZID != 0 && bzID >= MAX_BZID);
+                allowed = (MAX_BZID == 0 || bzID <= MAX_BZID);
             }
 
             bz_freePlayerRecord(pr);
 
-            return makeCall;
+            return allowed;
         }
 
         case vAdmins:
         {
-            return !bz_getAdmin(playerID);
+            return bz_getAdmin(playerID);
         }
 
         case vPermission:
         {
-            return !bz_hasPerm(playerID, "ALLOWVPN");
+            return bz_hasPerm(playerID, "ALLOWVPN");
         }
 
         default:
-            return true;
+            return false;
     }
 }
 
