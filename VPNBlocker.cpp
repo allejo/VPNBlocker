@@ -194,7 +194,7 @@ void VPNBlocker::Event(bz_EventData* eventData)
         {
             bz_PlayerJoinPartEventData_V1 *data = (bz_PlayerJoinPartEventData_V1*)eventData;
 
-            if (whiteList.find(data->record->ipAddress) != whiteList.end() && !allowedToUseVPN(data->playerID))
+            if (whiteList.find(data->record->ipAddress) == whiteList.end() && !allowedToUseVPN(data->playerID))
             {
                 WebQuery query;
                 query.playerID = data->playerID;
