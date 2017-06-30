@@ -66,6 +66,14 @@ static void warnMessage(int level, const char *message, ...)
     va_end(args);
 }
 
+static void noticeMessage(int level, const char *message, ...)
+{
+    va_list args;
+    va_start(args, message);
+    logMessage("notice", level, message, args);
+    va_end(args);
+}
+
 static void debugMessage(int level, const char *message, ...)
 {
     va_list args;
@@ -94,8 +102,16 @@ private:
 
     bool webBusy;
 
+    enum QueryType
+    {
+        qApiCheck = 0,
+        qReportVpn,
+        qFetchVpnList
+    };
+
     struct WebQuery
     {
+        QueryType type;
         int playerID;
         std::string callsign;
         std::string ipAddress;
@@ -105,21 +121,21 @@ private:
             bz_ApiString url;
             url.format("%s?showtype=4&email=%s&ip=%s", CONFIG_URL.c_str(), CONFIG_EMAIL.c_str(), ipAddress.c_str());
 
-            debugMessage(2, "Executing the following URL job...");
-            debugMessage(2, "    %s", url.c_str());
+            debugMessage(3, "Executing the following URL job...");
+            debugMessage(3, "    %s", url.c_str());
 
             return url;
         }
     };
 
-    struct WhiteListEntry
+    struct CachedAddressEntry
     {
         bool isProxy;
         std::string callsign;
         std::string ipAddress;
     };
 
-    std::map<std::string, WhiteListEntry> whiteList;
+    std::map<std::string, CachedAddressEntry> whiteList;
     std::queue<WebQuery> queryQueue;
 
     WebQuery currentQuery;
@@ -197,11 +213,15 @@ void VPNBlocker::Event(bz_EventData* eventData)
             if (whiteList.find(data->record->ipAddress) == whiteList.end() && !allowedToUseVPN(data->playerID))
             {
                 WebQuery query;
+                query.type = qApiCheck;
                 query.playerID = data->playerID;
                 query.callsign = data->record->callsign;
                 query.ipAddress = data->record->ipAddress;
 
                 queryQueue.push(query);
+
+                debugMessage(3, "Queueing IP check for [#%d] %s (%s)", query.playerID, query.callsign.c_str(), query.ipAddress.c_str());
+
                 nextQuery();
             }
         }
@@ -226,7 +246,7 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
 
         for (auto entry : whiteList)
         {
-            WhiteListEntry &e = entry.second;
+            CachedAddressEntry &e = entry.second;
 
             if (!e.isProxy) { continue; }
 
@@ -251,18 +271,62 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
         JsonObject root;
         JsonObject::buildObject(root, config);
 
-        WhiteListEntry entry;
-        entry.ipAddress = currentQuery.ipAddress;
-        entry.callsign = currentQuery.callsign;
-        entry.isProxy = root.getChild("proxy").getInt();
-
-        whiteList[entry.ipAddress] = entry;
-
-        if (entry.isProxy)
+        switch (currentQuery.type)
         {
-            bz_sendTextMessagef(BZ_SERVER, currentQuery.playerID, "Your host has been detected as a VPN. Please use refrain from using a VPN while playing.");
-            bz_sendTextMessagef(BZ_SERVER, currentQuery.playerID, "If you believe this to be a mistake, please contact %s", bz_getServerOwner());
-            bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", true);
+            case qApiCheck:
+            {
+                CachedAddressEntry entry;
+                entry.ipAddress = currentQuery.ipAddress;
+                entry.callsign = currentQuery.callsign;
+                entry.isProxy = root.getChild("proxy").getInt();
+
+                whiteList[entry.ipAddress] = entry;
+
+                if (entry.isProxy)
+                {
+                    bz_sendTextMessagef(BZ_SERVER, currentQuery.playerID, "Your host has been detected as a VPN. Please use refrain from using a VPN while playing.");
+                    bz_sendTextMessagef(BZ_SERVER, currentQuery.playerID, "If you believe this to be a mistake, please contact %s", bz_getServerOwner());
+
+                    bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", true);
+                    noticeMessage(0, "Player %s (%s) removed for VPN usage", currentQuery.callsign.c_str(), currentQuery.ipAddress.c_str());
+
+                    if (VPN_REPORT_URL != "0")
+                    {
+                        bz_ApiString query;
+                        query.format("query=%s&callsign=%s&ipAddress=%s&host=%s&country=%s&asn=%s",
+                                     "reportVPN", entry.callsign.c_str(), entry.ipAddress.c_str(), root.getChild("hostname").getString().c_str(),
+                                     root.getChild("countryName").getString().c_str(), root.getChild("asn").getString().c_str());
+
+                        bz_addURLJob(VPN_REPORT_URL.c_str(), NULL, query.c_str());
+                    }
+                }
+                else
+                {
+                    debugMessage(4, "Connection from %s not detected as a VPN", entry.ipAddress.c_str());
+                }
+            }
+            break;
+
+            case qFetchVpnList:
+            {
+                std::vector<JsonObject> list = root.getObjectArray();
+
+                for (auto item : list)
+                {
+                    CachedAddressEntry entry;
+                    entry.ipAddress = item.getChild("ipAddress").getString();
+                    entry.isProxy = true;
+
+                    whiteList[entry.ipAddress] = entry;
+                }
+            }
+            break;
+
+            default:
+            {
+                warnMessage(0, "An unknown query type was made to URL: %s", currentQuery.getURLCall().c_str());
+            }
+            break;
         }
 
         nextQuery();
