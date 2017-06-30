@@ -129,8 +129,6 @@ private:
     {
         vNone = 0,
         vVerified,
-        vAdmins,
-        vPermission
     };
 
     VpnAllowance
@@ -305,6 +303,11 @@ void VPNBlocker::nextQuery()
 
 bool VPNBlocker::allowedToUseVPN(int playerID)
 {
+    if (bz_hasPerm(playerID, "ALLOWVPN"))
+    {
+        return true;
+    }
+
     switch (ALLOW_VPN)
     {
         case vVerified:
@@ -327,16 +330,6 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
             bz_freePlayerRecord(pr);
 
             return allowed;
-        }
-
-        case vAdmins:
-        {
-            return bz_getAdmin(playerID);
-        }
-
-        case vPermission:
-        {
-            return bz_hasPerm(playerID, "ALLOWVPN");
         }
 
         default:
@@ -363,8 +356,6 @@ void VPNBlocker::loadConfiguration(const char* filePath)
 
     if      (_allowVPN == "NONE")       { ALLOW_VPN = vNone; }
     else if (_allowVPN == "VERIFIED")   { ALLOW_VPN = vVerified; }
-    else if (_allowVPN == "ADMINS")     { ALLOW_VPN = vAdmins; }
-    else if (_allowVPN == "PERMISSION") { ALLOW_VPN = vPermission; }
     else
     {
         ALLOW_VPN = vNone;
