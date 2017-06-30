@@ -232,7 +232,7 @@ void VPNBlocker::Event(bz_EventData* eventData)
     }
 }
 
-bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params)
+bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList* /*params*/)
 {
     if (!bz_hasPerm(playerID, "playerList"))
     {
