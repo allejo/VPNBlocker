@@ -271,14 +271,21 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
     }
 }
 
-void VPNBlocker::URLTimeout(const char* /*URL*/, int /* errorCode*/)
+void VPNBlocker::URLTimeout(const char* URL, int errorCode)
 {
+    errorMessage(0, "Query timed out to %s", URL);
+    errorMessage(0, "  error code: %d", errorCode);
+
     webBusy = false;
     nextQuery();
 }
 
-void VPNBlocker::URLError(const char* /*URL*/, int /*errorCode*/, const char * /*errorString*/)
+void VPNBlocker::URLError(const char* URL, int errorCode, const char* errorString)
 {
+    errorMessage(0, "Query error to %s", URL);
+    errorMessage(0, "  error code: %d", errorCode);
+    errorMessage(0, "  error message: %s", errorString);
+
     webBusy = false;
     nextQuery();
 }
