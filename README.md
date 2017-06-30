@@ -1,48 +1,49 @@
-# Plugin Name
+# VPN Blocker
 
-[![GitHub release](https://img.shields.io/github/release/USERNAME/REPO.svg?maxAge=2592000)](https://github.com/USERNAME/REPO/releases/latest)
+[![GitHub release](https://img.shields.io/badge/release-v1.0.1-blue.svg)](https://github.com/USERNAME/REPO/releases/latest)
 ![Minimum BZFlag Version](https://img.shields.io/badge/BZFlag-v2.4.0+-blue.svg)
-[![License](https://img.shields.io/github/license/USERNAME/REPO.svg)](https://github.com/USERNAME/REPO/blob/master/LICENSE.md)
 
-A brief description about what the plugin does should go here
+A BZFlag plug-in that will make an API call to a third-party service to check whether or not an IP address is a VPN.
 
 ## Requirements
 
-- List any requirements
-- this plug-in will require
+- BZFlag 2.4.0+
+- [bzToolkit](https://github.com/allejo/bztoolkit)
+- C++11
+- json-c
+  - libjson0-dev (Debian/Ubuntu)
+  - json-c-devel (Fedora Linux)
+- [JsonObject](https://github.com/allejo/JsonObject)
 
 ## Usage
 
 **Loading the plug-in**
 
-You should specify any command line arguments that are needed or lack thereof
+Load the plug-in with a single command line argument, which is the path to the required configuration file.
 
 ```
--loadplugin pluginName...
+-loadplugin VPNBlocker,/path/to/VPNBlocker.cfg
 ```
 
 **Configuration File**
 
-If the plugin requires a custom configuration file, describe it here and all of its special values
+The configuration file is required to load the plug-in and have it function properly. [A sample configuration is available as VPNBlocker.cfg](https://github.com/allejo/VPNBlocker/blob/master/VPNBlocker.cfg).
 
-**Custom BZDB Variables**
+| Config Value | Type | Default | Description |
+| ------------ | ---- | ------- | ----------- |
+| API_URL | string | N/A<sup>*</sup> | The URL where this plug-in will be checking IPs against. |
+| API_EMAIL | string | N/A | This email address is used as the "API key" for the IPHub service. Please change this to your own email |
+| ALLOW_VPN | string | NONE | Which players are allowed to use VPNs. See sample configuration for a more in-depth description and supported values |
+| MAX_BZID | int | N/A<sup>*</sup> | If `ALLOW_VPN` is set to VERIFIED, this is the maximum BZID allowed to use VPNs. A player with a newer (higher) BZID will not be allowed to use VPNs to prevent players from registering new accounts just to use VPNs. |
 
-These custom BZDB variables must be used with -setforced, which sets BZDB variable <name> to <value>, even if the variable does not exist. These variables may changed at any time in-game by using the /set command.
-
-```
--setforced <name> <value>
-```
-
-| Name | Type | Default | Description |
-| ---- | ---- | ------- | ----------- |
-| `_myBZBD` | int | 60 | A description of what this value does |
+<sup>*</sup> The sample configuration file contains the default and recommended values. Refrain from changing these unless you know what you're doing.
 
 **Custom Slash Commands**
 
 | Command | Permission | Description |
 | ------- | ---------- | ----------- |
-| `/command <param>` | vote | A description of what this command does, the required parameters, and permission required |
+| `/vpnblocklist` | playerList | Displays a list of IPs that have been blocked as VPNs |
 
 ## License
 
-[LICENSE](https://github.com/USERNAME/REPO/blob/master/LICENSE.md)
+All rights reserved.
