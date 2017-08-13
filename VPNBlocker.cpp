@@ -39,7 +39,7 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 1;
 const int MINOR = 1;
 const int REV = 0;
-const int BUILD = 16;
+const int BUILD = 17;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
@@ -298,7 +298,7 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
                     // Only kick the user if it's the same IP, otherwise another player might have joined with the same ID
                     if (currentIP == currentQuery.ipAddress)
                     {
-                        bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", false);
+                        bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", true);
                     }
 
                     bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", entry.callsign.c_str(), entry.ipAddress.c_str());
