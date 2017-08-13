@@ -37,9 +37,9 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 
 // Define plug-in version numbering
 const int MAJOR = 1;
-const int MINOR = 0;
-const int REV = 1;
-const int BUILD = 1;
+const int MINOR = 1;
+const int REV = 0;
+const int BUILD = 16;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
