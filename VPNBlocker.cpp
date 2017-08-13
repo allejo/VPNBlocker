@@ -29,7 +29,7 @@ THE SOFTWARE.
 #include "bztoolkit/bzToolkitAPI.h"
 #include "JsonObject/JsonObject.h"
 
-static std::string CONFIG_EMAIL;
+static std::string CONFIG_API_KEY;
 static std::string CONFIG_URL;
 
 // Define plug-in name
@@ -82,7 +82,7 @@ static void debugMessage(int level, const char *message, ...)
     va_end(args);
 }
 
-class VPNBlocker : public bz_Plugin, public bz_CustomSlashCommandHandler, public bz_BaseURLHandler
+class VPNBlocker : public bz_Plugin, public bz_CustomSlashCommandHandler, public bz_URLHandler_V2
 {
 public:
     virtual const char* Name ();
@@ -119,7 +119,7 @@ private:
         std::string getURLCall()
         {
             bz_ApiString url;
-            url.format("%s?showtype=4&email=%s&ip=%s", CONFIG_URL.c_str(), CONFIG_EMAIL.c_str(), ipAddress.c_str());
+            url.format("%s%s", CONFIG_URL.c_str(), ipAddress.c_str());
 
             debugMessage(3, "Executing the following URL job...");
             debugMessage(3, "    %s", url.c_str());
@@ -156,6 +156,8 @@ private:
 
     int
         MAX_BZID;
+
+    bz_APIStringList *curlHeaders;
 };
 
 BZ_PLUGIN(VPNBlocker)
@@ -265,6 +267,8 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 
     if (complete)
     {
+        bz_deleteStringList(curlHeaders);
+
         webBusy = false;
         json_object *config = json_tokener_parse(webData.c_str());
 
@@ -278,7 +282,9 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
                 CachedAddressEntry entry;
                 entry.ipAddress = currentQuery.ipAddress;
                 entry.callsign = currentQuery.callsign;
-                entry.isProxy = root.getChild("proxy").getInt();
+
+                // See special value 1: https://iphub.info/api
+                entry.isProxy = (root.getChild("block").getInt() == 1);
 
                 whiteList[entry.ipAddress] = entry;
 
@@ -344,7 +350,6 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 void VPNBlocker::URLTimeout(const char* URL, int errorCode)
 {
     errorMessage(0, "Query timed out to %s", URL);
-    errorMessage(0, "  error code: %d", errorCode);
 
     webBusy = false;
     nextQuery();
@@ -353,7 +358,6 @@ void VPNBlocker::URLTimeout(const char* URL, int errorCode)
 void VPNBlocker::URLError(const char* URL, int errorCode, const char* errorString)
 {
     errorMessage(0, "Query error to %s", URL);
-    errorMessage(0, "  error code: %d", errorCode);
     errorMessage(0, "  error message: %s", errorString);
 
     webBusy = false;
@@ -367,7 +371,10 @@ void VPNBlocker::nextQuery()
         webBusy = true;
         currentQuery = queryQueue.front();
 
-        bz_addURLJob(currentQuery.getURLCall().c_str(), this, NULL);
+        curlHeaders = bz_newStringList();
+        curlHeaders->push_back("X-Key: " + CONFIG_API_KEY);
+
+        bz_addURLJob(currentQuery.getURLCall().c_str(), this, NULL, NULL, curlHeaders);
 
         queryQueue.pop();
     }
@@ -420,14 +427,14 @@ void VPNBlocker::loadConfiguration(const char* filePath)
         bz_shutdown();
     }
 
-    CONFIG_EMAIL = config.item(section, "API_EMAIL");
+    CONFIG_API_KEY = config.item(section, "API_KEY");
     CONFIG_URL = config.item(section, "API_URL");
 
     // Read settings for ALLOW_VPN
     std::string _allowVPN = bz_toupper(config.item(section, "ALLOW_VPN").c_str());
 
-    if      (_allowVPN == "NONE")       { ALLOW_VPN = vNone; }
-    else if (_allowVPN == "VERIFIED")   { ALLOW_VPN = vVerified; }
+    if      (_allowVPN == "NONE")     { ALLOW_VPN = vNone; }
+    else if (_allowVPN == "VERIFIED") { ALLOW_VPN = vVerified; }
     else
     {
         ALLOW_VPN = vNone;
