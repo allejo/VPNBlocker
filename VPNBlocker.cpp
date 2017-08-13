@@ -366,6 +366,12 @@ void VPNBlocker::URLError(const char* URL, int /*errorCode*/, const char* errorS
 
 void VPNBlocker::nextQuery()
 {
+    if (CONFIG_API_KEY.empty() || CONFIG_URL.empty())
+    {
+        errorMessage(0, "Either `API_KEY` or `API_URL` has not been configured correctly; no URL call can be made.");
+        return;
+    }
+
     if (!queryQueue.empty() && !webBusy)
     {
         webBusy = true;
@@ -427,8 +433,35 @@ void VPNBlocker::loadConfiguration(const char* filePath)
         bz_shutdown();
     }
 
+    //
+    // Handle deprecations
+    //
+
+    std::string API_EMAIL = config.item(section, "API_EMAIL");
+
+    if (!API_EMAIL.empty())
+    {
+        errorMessage(0, "The `API_EMAIL` field has been replaced by 'API_KEY'.");
+        errorMessage(0, "  Please read the README file and see here for more info: https://iphub.info/api");
+    }
+
+    //
+    // Handle our core configuration
+    //
+
     CONFIG_API_KEY = config.item(section, "API_KEY");
     CONFIG_URL = config.item(section, "API_URL");
+
+    if (CONFIG_API_KEY.empty())
+    {
+        errorMessage(0, "You *must* define a value for `API_KEY` in your configuration file.");
+        errorMessage(0, "  Please read the README file and see here for more info: https://iphub.info/api");
+    }
+
+    if (CONFIG_URL.empty())
+    {
+        errorMessage(0, "You *must* define a value for `API_URL` in your configuration file.");
+    }
 
     // Read settings for ALLOW_VPN
     std::string _allowVPN = bz_toupper(config.item(section, "ALLOW_VPN").c_str());

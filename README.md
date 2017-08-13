@@ -1,13 +1,13 @@
 # VPN Blocker
 
-[![GitHub release](https://img.shields.io/badge/release-v1.2.0-blue.svg)](https://github.com/allejo/VPNBlocker/releases/latest)
+[![GitHub release](https://img.shields.io/badge/release-v1.1.0-blue.svg)](https://github.com/allejo/VPNBlocker/releases/latest)
 ![Minimum BZFlag Version](https://img.shields.io/badge/BZFlag-v2.4.12+-blue.svg)
 
 A BZFlag plug-in that will make an API call to a third-party service to check whether or not an IP address is a VPN.
 
 ## Requirements
 
-- BZFlag 2.4.0+
+- BZFlag 2.4.12+
 - [bzToolkit](https://github.com/allejo/bztoolkit)
 - C++11
 - json-c
