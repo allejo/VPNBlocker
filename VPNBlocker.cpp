@@ -287,7 +287,15 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
                     bz_sendTextMessagef(BZ_SERVER, currentQuery.playerID, "Your host has been detected as a VPN. Please use refrain from using a VPN while playing.");
                     bz_sendTextMessagef(BZ_SERVER, currentQuery.playerID, "If you believe this to be a mistake, please contact %s", bz_getServerOwner());
 
-                    bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", true);
+                    std::string currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
+
+                    // Only kick the user if it's the same IP, otherwise another player might have joined with the same ID
+                    if (currentIP == currentQuery.ipAddress)
+                    {
+                        bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", false);
+                    }
+
+                    bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", entry.callsign.c_str(), entry.ipAddress.c_str());
                     noticeMessage(0, "Player %s (%s) removed for VPN usage", currentQuery.callsign.c_str(), currentQuery.ipAddress.c_str());
 
                     if (VPN_REPORT_URL != "0")
