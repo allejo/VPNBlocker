@@ -8,7 +8,6 @@ A BZFlag plug-in that will make an API call to a third-party service to check wh
 ## Requirements
 
 - BZFlag 2.4.12+
-- [bzToolkit](https://github.com/allejo/bztoolkit)
 - C++11
 - json-c
   - libjson0-dev (Debian/Ubuntu)

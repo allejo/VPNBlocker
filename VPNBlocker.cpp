@@ -26,20 +26,19 @@ THE SOFTWARE.
 
 #include "bzfsAPI.h"
 #include "plugin_config.h"
-#include "bztoolkit/bzToolkitAPI.h"
 #include "JsonObject/JsonObject.h"
 
 static std::string CONFIG_API_KEY;
 static std::string CONFIG_URL;
 
 // Define plug-in name
-const std::string PLUGIN_NAME = "VPN Blocker";
+const char* PLUGIN_NAME = "VPN Blocker";
 
 // Define plug-in version numbering
 const int MAJOR = 1;
 const int MINOR = 1;
-const int REV = 0;
-const int BUILD = 17;
+const int REV = 1;
+const int BUILD = 20;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
@@ -47,7 +46,7 @@ static void logMessage(const char *type, int level, const char *message, va_list
     char buffer[4096];
     vsnprintf(buffer, 4096, message, args);
 
-    bz_debugMessagef(level, "%s :: %s :: %s", bz_toupper(type), PLUGIN_NAME.c_str(), buffer);
+    bz_debugMessagef(level, "%s :: %s :: %s", bz_toupper(type), PLUGIN_NAME, buffer);
 }
 
 static void errorMessage(int level, const char *message, ...)
@@ -164,12 +163,14 @@ BZ_PLUGIN(VPNBlocker)
 
 const char* VPNBlocker::Name()
 {
-    static std::string pluginName;
+    static const char* pluginBuild;
 
-    if (pluginName.empty())
-        pluginName = bztk_pluginName(PLUGIN_NAME, MAJOR, MINOR, REV, BUILD);
+    if (!pluginBuild)
+    {
+        pluginBuild = bz_format("%s %d.%d.%d (%d)", PLUGIN_NAME, MAJOR, MINOR, REV, BUILD);
+    }
 
-    return pluginName.c_str();
+    return pluginBuild;
 }
 
 void VPNBlocker::Init(const char* config)
