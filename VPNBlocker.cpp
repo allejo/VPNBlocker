@@ -32,13 +32,13 @@ static std::string CONFIG_API_KEY;
 static std::string CONFIG_URL;
 
 // Define plug-in name
-const char* PLUGIN_NAME = "VPN Blocker";
+const std::string PLUGIN_NAME = "VPN Blocker";
 
 // Define plug-in version numbering
 const int MAJOR = 1;
 const int MINOR = 1;
 const int REV = 1;
-const int BUILD = 20;
+const int BUILD = 21;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
@@ -46,7 +46,7 @@ static void logMessage(const char *type, int level, const char *message, va_list
     char buffer[4096];
     vsnprintf(buffer, 4096, message, args);
 
-    bz_debugMessagef(level, "%s :: %s :: %s", bz_toupper(type), PLUGIN_NAME, buffer);
+    bz_debugMessagef(level, "%s :: %s :: %s", bz_toupper(type), PLUGIN_NAME.c_str(), buffer);
 }
 
 static void errorMessage(int level, const char *message, ...)
@@ -167,7 +167,7 @@ const char* VPNBlocker::Name()
 
     if (!pluginBuild)
     {
-        pluginBuild = bz_format("%s %d.%d.%d (%d)", PLUGIN_NAME, MAJOR, MINOR, REV, BUILD);
+        pluginBuild = bz_format("%s %d.%d.%d (%d)", PLUGIN_NAME.c_str(), MAJOR, MINOR, REV, BUILD);
     }
 
     return pluginBuild;
