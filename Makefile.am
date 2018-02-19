@@ -11,6 +11,7 @@ AM_CXXFLAGS = $(CONF_CXXFLAGS)
 
 EXTRA_DIST = \
 	VPNBlocker.cfg \
+	UPGRADE-1.1.md \
 	LICENSE.md \
 	README.md
 
