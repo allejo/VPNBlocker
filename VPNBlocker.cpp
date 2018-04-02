@@ -38,7 +38,7 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 1;
 const int MINOR = 1;
 const int REV = 1;
-const int BUILD = 21;
+const int BUILD = 23;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
@@ -291,19 +291,22 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 
                 if (entry.isProxy)
                 {
-                    bz_sendTextMessagef(BZ_SERVER, currentQuery.playerID, "Your host has been detected as a VPN. Please use refrain from using a VPN while playing.");
-                    bz_sendTextMessagef(BZ_SERVER, currentQuery.playerID, "If you believe this to be a mistake, please contact %s", bz_getServerOwner());
+                    const char* currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
 
-                    std::string currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
+                    if (!currentIP)
+                    {
+                        noticeMessage(0, "IP %s blocked as VPN, but no player found with this IP.", entry.ipAddress.c_str());
+                        return;
+                    }
 
                     // Only kick the user if it's the same IP, otherwise another player might have joined with the same ID
-                    if (currentIP == currentQuery.ipAddress)
+                    if (strcmp(currentIP, currentQuery.ipAddress.c_str()) == 0)
                     {
                         bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", true);
                     }
 
                     bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", entry.callsign.c_str(), entry.ipAddress.c_str());
-                    noticeMessage(0, "Player %s (%s) removed for VPN usage", currentQuery.callsign.c_str(), currentQuery.ipAddress.c_str());
+                    noticeMessage(0, "Player %s (%s) removed for VPN usage", entry.callsign.c_str(), entry.ipAddress.c_str());
 
                     if (VPN_REPORT_URL != "0")
                     {
