@@ -38,7 +38,7 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 1;
 const int MINOR = 1;
 const int REV = 1;
-const int BUILD = 23;
+const int BUILD = 26;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
@@ -266,6 +266,8 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 {
     std::string webData = (const char*)data;
 
+    debugMessage(3, "Incoming URL job response was completed %ssuccessfully", complete ? "" : "un");
+
     if (complete)
     {
         bz_deleteStringList(curlHeaders);
@@ -291,6 +293,8 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 
                 if (entry.isProxy)
                 {
+                    debugMessage(3, "IP %s has been detected as a VPN");
+
                     const char* currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
 
                     if (!currentIP)
@@ -376,6 +380,8 @@ void VPNBlocker::nextQuery()
         return;
     }
 
+    debugMessage(3, "Preparing to send next queued IP check");
+
     if (!queryQueue.empty() && !webBusy)
     {
         webBusy = true;
@@ -384,9 +390,23 @@ void VPNBlocker::nextQuery()
         curlHeaders = bz_newStringList();
         curlHeaders->push_back("X-Key: " + CONFIG_API_KEY);
 
-        bz_addURLJob(currentQuery.getURLCall().c_str(), this, NULL, NULL, curlHeaders);
+        bool urlJobSent = bz_addURLJob(currentQuery.getURLCall().c_str(), this, NULL, NULL, curlHeaders);
+
+        debugMessage(3, "IP check %s", urlJobSent ? "sent successfully" : "failed to send");
 
         queryQueue.pop();
+    }
+    else
+    {
+        if (webBusy)
+        {
+            debugMessage(3, "Web jobs are currently busy");
+        }
+
+        if (queryQueue.empty())
+        {
+            debugMessage(3, "nextQuery() was called but the queue was empty");
+        }
     }
 }
 
