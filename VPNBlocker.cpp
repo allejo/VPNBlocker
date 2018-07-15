@@ -175,6 +175,8 @@ const char* VPNBlocker::Name()
 
 void VPNBlocker::Init(const char* config)
 {
+    webBusy = false;
+
     Register(bz_eAllowPlayer);
     Register(bz_ePlayerJoinEvent);
 
