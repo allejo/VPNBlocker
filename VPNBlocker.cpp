@@ -37,8 +37,8 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 // Define plug-in version numbering
 const int MAJOR = 1;
 const int MINOR = 1;
-const int REV = 2;
-const int BUILD = 27;
+const int REV = 3;
+const int BUILD = 29;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
@@ -295,7 +295,7 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 
                 if (entry.isProxy)
                 {
-                    debugMessage(3, "IP %s has been detected as a VPN");
+                    debugMessage(3, "IP %s has been detected as a VPN", entry.ipAddress.c_str());
 
                     const char* currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
 
