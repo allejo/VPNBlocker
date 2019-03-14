@@ -21,7 +21,7 @@ THE SOFTWARE.
 */
 
 #include <cstdarg>
-#include <json/json.h>
+#include <json-c/json.h>
 #include <queue>
 
 #include "bzfsAPI.h"
@@ -36,9 +36,9 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 
 // Define plug-in version numbering
 const int MAJOR = 1;
-const int MINOR = 1;
-const int REV = 3;
-const int BUILD = 29;
+const int MINOR = 2;
+const int REV = 0;
+const int BUILD = 30;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
