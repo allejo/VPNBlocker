@@ -1,0 +1,30 @@
+{
+  "allow_vpn": "none",
+  "max_bzid": "57863",
+  "services": [
+    {
+      "type": "iphub",
+      "url": "http://v2.api.iphub.info/ip/",
+      "key": "ChangeMe"
+    },
+    {
+      "type": "custom",
+      "url": "https://example.com/api.php",
+      "query_params": {
+        "apikey": "ChangeMe",
+        "action": "dronebl",
+        "ip": "{ip}"
+      },
+      "headers": {},
+      "response": {
+        "report": ["ip"],
+        "disallow": {
+          "key": "block",
+          "value": 1
+        }
+      }
+    }
+  ],
+  "block_list_url": "",
+  "report_url": ""
+}
