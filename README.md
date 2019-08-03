@@ -9,10 +9,6 @@ A BZFlag plug-in that will make an API call to a third-party service to check wh
 
 - BZFlag 2.4.12+
 - C++11
-- json-c
-  - libjson-c-dev (Debian/Ubuntu)
-  - json-c-devel (Fedora Linux)
-- [JsonObject](https://github.com/allejo/JsonObject)
 
 ## Usage
 

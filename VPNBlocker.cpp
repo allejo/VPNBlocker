@@ -21,12 +21,14 @@ THE SOFTWARE.
 */
 
 #include <cstdarg>
-#include <json-c/json.h>
 #include <queue>
 
 #include "bzfsAPI.h"
 #include "plugin_config.h"
-#include "JsonObject/JsonObject.h"
+
+#include "nlohmann/json.hpp"
+
+using json = nlohmann::json;
 
 static std::string CONFIG_API_KEY;
 static std::string CONFIG_URL;
@@ -35,8 +37,8 @@ static std::string CONFIG_URL;
 const std::string PLUGIN_NAME = "VPN Blocker";
 
 // Define plug-in version numbering
-const int MAJOR = 1;
-const int MINOR = 2;
+const int MAJOR = 2;
+const int MINOR = 0;
 const int REV = 0;
 const int BUILD = 30;
 
@@ -84,20 +86,20 @@ static void debugMessage(int level, const char *message, ...)
 class VPNBlocker : public bz_Plugin, public bz_CustomSlashCommandHandler, public bz_URLHandler_V2
 {
 public:
-    virtual const char* Name ();
-    virtual void Init (const char* config);
-    virtual void Cleanup ();
-    virtual void Event (bz_EventData* eventData);
-    virtual bool SlashCommand (int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params);
+    const char* Name ();
+    void Init (const char* config);
+    void Cleanup ();
+    void Event (bz_EventData* eventData);
+    bool SlashCommand (int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params);
 
-    virtual void URLDone (const char* URL, const void* data, unsigned int size, bool complete);
-    virtual void URLTimeout (const char* URL, int errorCode);
-    virtual void URLError (const char* URL, int errorCode, const char *errorString);
+    void URLDone (const char* URL, const void* data, unsigned int size, bool complete);
+    void URLTimeout (const char* URL, int errorCode);
+    void URLError (const char* URL, int errorCode, const char *errorString);
 
 private:
-    virtual void loadConfiguration(const char *filePath);
-    virtual void nextQuery();
-    virtual bool allowedToUseVPN(int playerID);
+    void loadConfiguration(const char *filePath);
+    void nextQuery();
+    bool allowedToUseVPN(int playerID);
 
     bool webBusy;
 
@@ -275,10 +277,7 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
         bz_deleteStringList(curlHeaders);
 
         webBusy = false;
-        json_object *config = json_tokener_parse(webData.c_str());
-
-        JsonObject root;
-        JsonObject::buildObject(root, config);
+        json response = json::parse(webData.c_str());
 
         switch (currentQuery.type)
         {
@@ -289,7 +288,7 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
                 entry.callsign = currentQuery.callsign;
 
                 // See special value 1: https://iphub.info/api
-                entry.isProxy = (root.getChild("block").getInt() == 1);
+                entry.isProxy = (response["block"] == 1);
 
                 whiteList[entry.ipAddress] = entry;
 
@@ -318,8 +317,8 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
                     {
                         bz_ApiString query;
                         query.format("query=%s&callsign=%s&ipAddress=%s&host=%s&country=%s&asn=%s",
-                                     "reportVPN", entry.callsign.c_str(), entry.ipAddress.c_str(), root.getChild("hostname").getString().c_str(),
-                                     root.getChild("countryName").getString().c_str(), root.getChild("asn").getString().c_str());
+                                     "reportVPN", entry.callsign.c_str(), entry.ipAddress.c_str(), response["hostname"].c_str(),
+                                     response["countryName"].c_str(), response["asn"].c_str());
 
                         bz_addURLJob(VPN_REPORT_URL.c_str(), NULL, query.c_str());
                     }
@@ -333,12 +332,10 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 
             case qFetchVpnList:
             {
-                std::vector<JsonObject> list = root.getObjectArray();
-
-                for (auto item : list)
+                for (auto item : response)
                 {
                     CachedAddressEntry entry;
-                    entry.ipAddress = item.getChild("ipAddress").getString();
+                    entry.ipAddress = item["ipAddress"];
                     entry.isProxy = true;
 
                     whiteList[entry.ipAddress] = entry;
