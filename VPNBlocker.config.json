@@ -1,6 +1,6 @@
 {
   "allow_vpn": "none",
-  "max_bzid": "57863",
+  "max_bzid": 57863,
   "services": [
     {
       "type": "iphub",
@@ -20,7 +20,7 @@
         "report": ["ip"],
         "disallow": {
           "key": "block",
-          "value": 1
+          "value": "1"
         }
       }
     }

@@ -21,10 +21,12 @@ THE SOFTWARE.
 */
 
 #include <cstdarg>
+#include <map>
 #include <queue>
 
 #include "bzfsAPI.h"
 #include "plugin_config.h"
+#include "plugin_files.h"
 
 #include "nlohmann/json.hpp"
 
@@ -81,6 +83,128 @@ static void debugMessage(int level, const char *message, ...)
     va_start(args, message);
     logMessage("debug", level, message, args);
     va_end(args);
+}
+
+enum ServiceType {
+    IPHub = 0,
+    Custom,
+};
+
+enum VpnAllowanceBehavior {
+    None = 0,
+    Verified,
+};
+
+struct BlockDefinition {
+    std::string key;
+    std::string value;
+};
+
+struct ApiResponse {
+    std::vector<std::string> fieldsToReport;
+    BlockDefinition blockDefinition;
+};
+
+struct Service {
+    ServiceType type;
+    std::string url;
+    std::unordered_map<std::string, std::string> queryParams;
+    std::unordered_map<std::string, std::string> headers;
+    ApiResponse response;
+};
+
+struct Configuration {
+    VpnAllowanceBehavior behavior;
+    int maxBZID;
+    std::vector<Service> services;
+    std::string blockListUrl;
+    std::string reportUrl;
+};
+
+NLOHMANN_JSON_SERIALIZE_ENUM(ServiceType, {
+    {IPHub, "iphub"},
+    {Custom, "custom"},
+})
+
+NLOHMANN_JSON_SERIALIZE_ENUM(VpnAllowanceBehavior, {
+    {None, "none"},
+    {Verified, "verified"},
+})
+
+void to_json(json &j, const BlockDefinition &b)
+{
+    j = json{
+        {"key", b.key},
+        {"value", b.value},
+    };
+}
+
+void to_json(json &j, const ApiResponse &a)
+{
+    j = json{
+        {"report", json(a.fieldsToReport)},
+        {"disallow", a.blockDefinition},
+    };
+}
+
+void to_json(json &j, const Service &s)
+{
+    j = json{
+        {"type", s.type},
+        {"url", s.url},
+        {"query_params", json(s.queryParams)},
+        {"headers", json(s.headers)},
+        {"response", s.response},
+    };
+}
+
+void to_json(json &j, const Configuration &c)
+{
+    j = json{
+        {"allow_vpn", c.behavior},
+        {"max_bzid", c.maxBZID},
+        {"services", c.services},
+        {"block_list_url", c.blockListUrl},
+        {"report_url", c.reportUrl},
+    };
+}
+
+void from_json(const json &j, BlockDefinition &b)
+{
+    j.at("key").get_to(b.key);
+    j.at("value").get_to(b.value);
+}
+
+void from_json(const json &j, ApiResponse &a)
+{
+    j.at("report").get_to(a.fieldsToReport);
+    j.at("disallow").get_to(a.blockDefinition);
+}
+
+void from_json(const json &j, Service &s)
+{
+    j.at("type").get_to(s.type);
+    j.at("url").get_to(s.url);
+
+    if (s.type == IPHub)
+    {
+        s.headers["X-Key"] = j.at("key").get<std::string>();
+    }
+    else if (s.type == Custom)
+    {
+        j.at("query_params").get_to(s.queryParams);
+        j.at("headers").get_to(s.headers);
+        j.at("response").get_to(s.response);
+    }
+}
+
+void from_json(const json &j, Configuration &c)
+{
+    j.at("allow_vpn").get_to(c.behavior);
+    j.at("max_bzid").get_to(c.maxBZID);
+    j.at("services").get_to(c.services);
+    j.at("block_list_url").get_to(c.blockListUrl);
+    j.at("report_url").get_to(c.reportUrl);
 }
 
 class VPNBlocker : public bz_Plugin, public bz_CustomSlashCommandHandler, public bz_URLHandler_V2
@@ -177,6 +301,11 @@ const char* VPNBlocker::Name()
 
 void VPNBlocker::Init(const char* config)
 {
+    std::string c = getFileText("VPNBlocker.config.json");
+    auto conf = json::parse(c.c_str());
+
+    auto value = conf.get<Configuration>();
+
     webBusy = false;
 
     Register(bz_eAllowPlayer);
@@ -317,8 +446,8 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
                     {
                         bz_ApiString query;
                         query.format("query=%s&callsign=%s&ipAddress=%s&host=%s&country=%s&asn=%s",
-                                     "reportVPN", entry.callsign.c_str(), entry.ipAddress.c_str(), response["hostname"].c_str(),
-                                     response["countryName"].c_str(), response["asn"].c_str());
+                                     "reportVPN", entry.callsign.c_str(), entry.ipAddress.c_str(), response["hostname"].get<std::string>().c_str(),
+                                     response["countryName"].get<std::string>().c_str(), response["asn"].get<std::string>().c_str());
 
                         bz_addURLJob(VPN_REPORT_URL.c_str(), NULL, query.c_str());
                     }
