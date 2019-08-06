@@ -114,7 +114,7 @@ struct Service {
 };
 
 struct Configuration {
-    VpnAllowanceBehavior behavior;
+    VpnAllowanceBehavior behavior = None;
     int maxBZID;
     std::vector<Service> services;
     std::string blockListUrl;
@@ -221,10 +221,11 @@ public:
     void URLError (const char* URL, int errorCode, const char *errorString);
 
 private:
-    void loadConfiguration(const char *filePath);
-    void nextQuery();
+    bool loadJsonConfiguration(const char *filePath);
     bool allowedToUseVPN(int playerID);
+    void nextQuery();
 
+    bool loadSuccessful;
     bool webBusy;
 
     enum QueryType
@@ -263,24 +264,14 @@ private:
     std::map<std::string, CachedAddressEntry> whiteList;
     std::queue<WebQuery> queryQueue;
 
+    Configuration conf;
     WebQuery currentQuery;
 
     // Configuration settings
-    enum VpnAllowance
-    {
-        vNone = 0,
-        vVerified,
-    };
-
-    VpnAllowance
-        ALLOW_VPN;
 
     std::string
         VPN_BLOCKLIST_URL,
         VPN_REPORT_URL;
-
-    int
-        MAX_BZID;
 
     bz_APIStringList *curlHeaders;
 };
@@ -301,17 +292,11 @@ const char* VPNBlocker::Name()
 
 void VPNBlocker::Init(const char* config)
 {
-    std::string c = getFileText("VPNBlocker.config.json");
-    auto conf = json::parse(c.c_str());
-
-    auto value = conf.get<Configuration>();
-
+    loadSuccessful = loadJsonConfiguration(config);
     webBusy = false;
 
     Register(bz_eAllowPlayer);
     Register(bz_ePlayerJoinEvent);
-
-    loadConfiguration(config);
 
     bz_registerCustomSlashCommand("vpnblocklist", this);
 }
@@ -545,9 +530,9 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
         return true;
     }
 
-    switch (ALLOW_VPN)
+    switch (conf.behavior)
     {
-        case vVerified:
+        case Verified:
         {
             int bzID = 0;
             bool allowed = false;
@@ -561,7 +546,7 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
 
             if (pr->verified)
             {
-                allowed = (MAX_BZID == 0 || bzID <= MAX_BZID);
+                allowed = (conf.maxBZID == 0 || bzID <= conf.maxBZID);
             }
 
             bz_freePlayerRecord(pr);
@@ -574,70 +559,25 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
     }
 }
 
-void VPNBlocker::loadConfiguration(const char* filePath)
+bool VPNBlocker::loadJsonConfiguration(const char *filePath)
 {
-    PluginConfig config = PluginConfig(filePath);
-    std::string section = "vpnblocker";
+    std::string content = getFileText(filePath);
 
-    if (config.errors)
+    if (content.empty())
     {
-        errorMessage(0, "Your configuration file contains errors. Shutting down...");
-        bz_shutdown();
+        errorMessage(0, "The configuration file could not be loaded: %s", filePath);
+        return false;
     }
 
-    //
-    // Handle deprecations
-    //
+    json raw_conf = json::parse(content.c_str(), NULL, false);
 
-    std::string API_EMAIL = config.item(section, "API_EMAIL");
-
-    if (!API_EMAIL.empty())
+    if (raw_conf.is_discarded())
     {
-        errorMessage(0, "The `API_EMAIL` field has been replaced by 'API_KEY'.");
-        errorMessage(0, "  Please read the README file and see here for more info: https://iphub.info/api");
+        errorMessage(0, "Configuration file failed to load due to containing invalid JSON.");
+        return false;
     }
 
-    //
-    // Handle our core configuration
-    //
+    conf = raw_conf.get<Configuration>();
 
-    CONFIG_API_KEY = config.item(section, "API_KEY");
-    CONFIG_URL = config.item(section, "API_URL");
-
-    if (CONFIG_API_KEY.empty())
-    {
-        errorMessage(0, "You *must* define a value for `API_KEY` in your configuration file.");
-        errorMessage(0, "  Please read the README file and see here for more info: https://iphub.info/api");
-    }
-
-    if (CONFIG_URL.empty())
-    {
-        errorMessage(0, "You *must* define a value for `API_URL` in your configuration file.");
-    }
-
-    // Read settings for ALLOW_VPN
-    std::string _allowVPN = bz_toupper(config.item(section, "ALLOW_VPN").c_str());
-
-    if      (_allowVPN == "NONE")     { ALLOW_VPN = vNone; }
-    else if (_allowVPN == "VERIFIED") { ALLOW_VPN = vVerified; }
-    else
-    {
-        ALLOW_VPN = vNone;
-        errorMessage(0, "An invalid setting was found for ALLOW_VPN, defaulting to: NONE");
-    }
-
-    // Read settings for MAX_BZID
-    MAX_BZID = 0;
-
-    try
-    {
-        MAX_BZID = std::stoi(config.item(section, "MAX_BZID"));
-    }
-    catch (std::exception &e) {}
-
-    debugMessage(3, "MAX_BZID has been set to %d", MAX_BZID);
-
-    // Read settings for VPN_BLOCKLIST_URL and VPN_REPORT_URL
-    VPN_BLOCKLIST_URL = config.item(section, "VPN_BLOCKLIST_URL");
-    VPN_REPORT_URL = config.item(section, "VPN_REPORT_URL");
+    return true;
 }
