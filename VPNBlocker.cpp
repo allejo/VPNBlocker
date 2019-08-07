@@ -221,8 +221,8 @@ public:
     void URLError (const char* URL, int errorCode, const char *errorString);
 
 private:
-    bool loadJsonConfiguration(const char *filePath);
     bool allowedToUseVPN(int playerID);
+    void reloadConfiguration();
     void nextQuery();
 
     bool loadSuccessful;
@@ -235,7 +235,7 @@ private:
         qFetchVpnList
     };
 
-    struct WebQuery
+    struct ApiQuery
     {
         QueryType type;
         int playerID;
@@ -262,14 +262,15 @@ private:
     };
 
     std::map<std::string, CachedAddressEntry> whiteList;
-    std::queue<WebQuery> queryQueue;
+    std::queue<ApiQuery> queryQueue;
 
     Configuration conf;
-    WebQuery currentQuery;
+    ApiQuery currentQuery;
 
     // Configuration settings
 
     std::string
+        CONFIG_PATH,
         VPN_BLOCKLIST_URL,
         VPN_REPORT_URL;
 
@@ -292,12 +293,15 @@ const char* VPNBlocker::Name()
 
 void VPNBlocker::Init(const char* config)
 {
-    loadSuccessful = loadJsonConfiguration(config);
+    CONFIG_PATH = config;
     webBusy = false;
+
+    reloadConfiguration();
 
     Register(bz_eAllowPlayer);
     Register(bz_ePlayerJoinEvent);
 
+    bz_registerCustomSlashCommand("reload", this);
     bz_registerCustomSlashCommand("vpnblocklist", this);
 }
 
@@ -305,11 +309,18 @@ void VPNBlocker::Cleanup()
 {
     Flush();
 
+    bz_removeCustomSlashCommand("reload");
     bz_removeCustomSlashCommand("vpnblocklist");
 }
 
 void VPNBlocker::Event(bz_EventData* eventData)
 {
+    // If the plug-in didn't load successfully, don't bother handling any events
+    if (!loadSuccessful)
+    {
+        return;
+    }
+
     switch (eventData->eventType)
     {
         case bz_eAllowPlayer:
@@ -333,7 +344,7 @@ void VPNBlocker::Event(bz_EventData* eventData)
 
             if (whiteList.find(data->record->ipAddress) == whiteList.end() && !allowedToUseVPN(data->playerID))
             {
-                WebQuery query;
+                ApiQuery query;
                 query.type = qApiCheck;
                 query.playerID = data->playerID;
                 query.callsign = data->record->callsign;
@@ -353,16 +364,28 @@ void VPNBlocker::Event(bz_EventData* eventData)
     }
 }
 
-bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList* /*params*/)
+bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList* params)
 {
-    if (!bz_hasPerm(playerID, "playerList"))
+    if (command == "reload" && bz_hasPerm(playerID, "setAll"))
     {
-        bz_sendTextMessagef(BZ_SERVER, playerID, "You do not have permission to run the /%s command", command.c_str());
-        return true;
+        if (params->size() == 0)
+        {
+            reloadConfiguration();
+        }
+        else if (params->get(0) == "vpnblocker")
+        {
+            reloadConfiguration();
+            return true;
+        }
     }
-
-    if (command == "vpnblocklist")
+    else if (command == "vpnblocklist")
     {
+        if (!bz_hasPerm(playerID, "playerList"))
+        {
+            bz_sendTextMessagef(BZ_SERVER, playerID, "You do not have permission to run the /%s command", command.c_str());
+            return true;
+        }
+
         bz_sendTextMessagef(BZ_SERVER, playerID, "Currently blocked VPN IPs:");
 
         for (auto entry : whiteList)
@@ -523,6 +546,15 @@ void VPNBlocker::nextQuery()
     }
 }
 
+/**
+ * Check whether or not a given player ID is allowed to use a VPN based on the `allow_vpn` behavior.
+ *
+ * The "ALLOWVPN" permission will always supersede any settings.
+ *
+ * @param playerID
+ *
+ * @return True if the player is allowed to use a VPN.
+ */
 bool VPNBlocker::allowedToUseVPN(int playerID)
 {
     if (bz_hasPerm(playerID, "ALLOWVPN"))
@@ -559,25 +591,31 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
     }
 }
 
-bool VPNBlocker::loadJsonConfiguration(const char *filePath)
+/**
+ * Load the configuration file from the same path that was stored since the plug-in was first loaded.
+ */
+void VPNBlocker::reloadConfiguration()
 {
-    std::string content = getFileText(filePath);
+    std::string content = getFileText(CONFIG_PATH);
 
     if (content.empty())
     {
-        errorMessage(0, "The configuration file could not be loaded: %s", filePath);
-        return false;
+        loadSuccessful = false;
+        errorMessage(0, "The configuration file could not be loaded: %s", CONFIG_PATH.c_str());
+
+        return;
     }
 
     json raw_conf = json::parse(content.c_str(), NULL, false);
 
     if (raw_conf.is_discarded())
     {
+        loadSuccessful = false;
         errorMessage(0, "Configuration file failed to load due to containing invalid JSON.");
-        return false;
+
+        return;
     }
 
     conf = raw_conf.get<Configuration>();
-
-    return true;
+    loadSuccessful = true;
 }
