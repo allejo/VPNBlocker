@@ -40,7 +40,8 @@ const int MINOR = 0;
 const int REV = 0;
 const int BUILD = 42;
 
-namespace logging {
+namespace logging
+{
     static void logMessage(const char *type, int level, const char *message, va_list args)
     {
         char buffer[4096];
@@ -84,52 +85,59 @@ namespace logging {
 
 namespace config
 {
-    enum ServiceType {
+    enum ServiceType
+    {
         IPHub = 0,
         Custom,
     };
 
-    enum VpnWhitelist {
+    enum VpnWhitelist
+    {
         None = 0,
         Verified,
     };
 
-    struct BlockDefinition {
+    struct BlockDefinition
+    {
         std::string key;
         std::string value;
     };
 
-    struct ApiResponse {
+    struct ApiResponse
+    {
         std::vector<std::string> fieldsToReport;
         BlockDefinition blockDefinition;
     };
 
-    struct Service {
+    struct Service
+    {
         ServiceType type;
         std::string url;
         std::unordered_map<std::string, std::string> queryParams;
         std::unordered_map<std::string, std::string> headers;
         ApiResponse response;
 
-        bz_APIStringList* urlHeaders;
+        bz_APIStringList *urlHeaders;
         std::string ipAddress;
 
-        Service() {
+        Service()
+        {
             urlHeaders = bz_newStringList();
             ipAddress = "";
         }
 
-        ~Service() {
+        ~Service()
+        {
             bz_deleteStringList(urlHeaders);
         }
 
-        void sendRequestForIP(std::string ip, bz_URLHandler_V2* handler)
+        void sendRequestForIP(std::string ip, bz_URLHandler_V2 *handler)
         {
             ipAddress = ip;
 
             setHeaders();
 
-            bool urlJobSent = bz_addURLJob(getURL().c_str(), handler, (void*)this, NULL, urlHeaders);
+            bool urlJobSent = bz_addURLJob(getURL().c_str(), handler, (void *) this, NULL, urlHeaders);
 
             logging::debug(3, "IP check %s", urlJobSent ? "sent successfully" : "failed to send");
             logging::debug(3, "  Sending to: %s", url.c_str());
@@ -182,7 +190,8 @@ namespace config
         }
     };
 
-    struct Settings {
+    struct Settings
+    {
         VpnWhitelist behavior = None;
         int maxBZID;
         std::vector<Service> services;
@@ -313,18 +322,20 @@ namespace config
 class VPNBlocker : public bz_Plugin, public bz_CustomSlashCommandHandler, public bz_URLHandler_V2
 {
 public:
-    const char* Name ();
-    void Init (const char* config);
-    void Cleanup ();
-    void Event (bz_EventData* eventData);
-    bool SlashCommand (int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params);
+    const char *Name();
+    void Init(const char *config);
+    void Cleanup();
+    void Event(bz_EventData *eventData);
 
-    void URLDone (const char* URL, const void* data, unsigned int size, bool complete);
-    void URLTimeout (const char* URL, int errorCode);
-    void URLError (const char* URL, int errorCode, const char *errorString);
+    bool SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params);
+
+    void URLDone(const char *URL, const void *data, unsigned int size, bool complete);
+    void URLTimeout(const char *URL, int errorCode);
+    void URLError(const char *URL, int errorCode, const char *errorString);
 
 private:
     bool allowedToUseVPN(int playerID);
+
     void reloadSettings();
     void nextQuery();
 
@@ -363,9 +374,9 @@ private:
 
 BZ_PLUGIN(VPNBlocker)
 
-const char* VPNBlocker::Name()
+const char *VPNBlocker::Name()
 {
-    static const char* pluginBuild;
+    static const char *pluginBuild;
 
     if (!pluginBuild)
     {
@@ -375,7 +386,7 @@ const char* VPNBlocker::Name()
     return pluginBuild;
 }
 
-void VPNBlocker::Init(const char* config)
+void VPNBlocker::Init(const char *config)
 {
     CONFIG_PATH = config;
     remainingWeb = 0;
@@ -397,7 +408,7 @@ void VPNBlocker::Cleanup()
     bz_removeCustomSlashCommand("vpnblocklist");
 }
 
-void VPNBlocker::Event(bz_EventData* eventData)
+void VPNBlocker::Event(bz_EventData *eventData)
 {
     // If the plug-in didn't load successfully, don't bother handling any events
     if (!loadSuccessful)
@@ -448,7 +459,7 @@ void VPNBlocker::Event(bz_EventData* eventData)
     }
 }
 
-bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList* params)
+bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /*message*/, bz_APIStringList *params)
 {
     if (command == "reload" && bz_hasPerm(playerID, "setAll"))
     {
@@ -476,7 +487,10 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
         {
             CachedAddressEntry &e = entry.second;
 
-            if (!e.isProxy) { continue; }
+            if (!e.isProxy)
+            {
+                continue;
+            }
 
             bz_sendTextMessagef(BZ_SERVER, playerID, "    %s", e.ipAddress.c_str());
         }
@@ -487,7 +501,7 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
     return false;
 }
 
-void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*/, bool complete)
+void VPNBlocker::URLDone(const char *URL, const void *data, unsigned int /*size*/, bool complete)
 {
     std::string webData = (const char*)data;
 
@@ -506,7 +520,7 @@ void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*
                 entry.ipAddress = currentQuery.ipAddress;
                 entry.callsign = currentQuery.callsign;
 
-                config::Service* srvHandler = (config::Service*)token;
+                config::Service *srvHandler = (config::Service *) token;
 
                 if (!srvHandler)
                 {
@@ -521,7 +535,7 @@ void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*
                 {
                     logging::debug(3, "IP %s has been detected as a VPN", entry.ipAddress.c_str());
 
-                    const char* currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
+                    const char *currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
 
                     if (!currentIP)
                     {
@@ -571,7 +585,7 @@ void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*
     }
 }
 
-void VPNBlocker::URLTimeout(const char* URL, int /*errorCode*/)
+void VPNBlocker::URLTimeout(const char *URL, int /*errorCode*/)
 {
     logging::error(0, "Query timed out to %s", URL);
 
@@ -579,7 +593,7 @@ void VPNBlocker::URLTimeout(const char* URL, int /*errorCode*/)
     nextQuery();
 }
 
-void VPNBlocker::URLError(const char* URL, int /*errorCode*/, const char* errorString)
+void VPNBlocker::URLError(const char *URL, int /*errorCode*/, const char *errorString)
 {
     logging::error(0, "Query error to %s", URL);
     logging::error(0, "  error message: %s", errorString);
@@ -597,7 +611,7 @@ void VPNBlocker::nextQuery()
 
     if (!queryQueue.empty() && remainingWeb <= 0)
     {
-        remainingWeb = (int)conf.services.size();
+        remainingWeb = (int) conf.services.size();
         currentQuery = queryQueue.front();
 
         for (auto &service : conf.services)
