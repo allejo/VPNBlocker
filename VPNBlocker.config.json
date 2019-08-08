@@ -4,7 +4,6 @@
   "services": [
     {
       "type": "iphub",
-      "url": "http://v2.api.iphub.info/ip/",
       "key": "ChangeMe"
     },
     {

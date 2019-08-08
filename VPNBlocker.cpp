@@ -42,7 +42,7 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 2;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 30;
+const int BUILD = 41;
 
 // Logging helper functions
 static void logMessage(const char *type, int level, const char *message, va_list args)
@@ -85,126 +85,232 @@ static void debugMessage(int level, const char *message, ...)
     va_end(args);
 }
 
-enum ServiceType {
-    IPHub = 0,
-    Custom,
-};
-
-enum VpnAllowanceBehavior {
-    None = 0,
-    Verified,
-};
-
-struct BlockDefinition {
-    std::string key;
-    std::string value;
-};
-
-struct ApiResponse {
-    std::vector<std::string> fieldsToReport;
-    BlockDefinition blockDefinition;
-};
-
-struct Service {
-    ServiceType type;
-    std::string url;
-    std::unordered_map<std::string, std::string> queryParams;
-    std::unordered_map<std::string, std::string> headers;
-    ApiResponse response;
-};
-
-struct Configuration {
-    VpnAllowanceBehavior behavior = None;
-    int maxBZID;
-    std::vector<Service> services;
-    std::string blockListUrl;
-    std::string reportUrl;
-};
-
-NLOHMANN_JSON_SERIALIZE_ENUM(ServiceType, {
-    {IPHub, "iphub"},
-    {Custom, "custom"},
-})
-
-NLOHMANN_JSON_SERIALIZE_ENUM(VpnAllowanceBehavior, {
-    {None, "none"},
-    {Verified, "verified"},
-})
-
-void to_json(json &j, const BlockDefinition &b)
+namespace config
 {
-    j = json{
-        {"key", b.key},
-        {"value", b.value},
+    enum ServiceType {
+        IPHub = 0,
+        Custom,
     };
-}
 
-void to_json(json &j, const ApiResponse &a)
-{
-    j = json{
-        {"report", json(a.fieldsToReport)},
-        {"disallow", a.blockDefinition},
+    enum VpnWhitelist {
+        None = 0,
+        Verified,
     };
-}
 
-void to_json(json &j, const Service &s)
-{
-    j = json{
-        {"type", s.type},
-        {"url", s.url},
-        {"query_params", json(s.queryParams)},
-        {"headers", json(s.headers)},
-        {"response", s.response},
+    struct BlockDefinition {
+        std::string key;
+        std::string value;
     };
-}
 
-void to_json(json &j, const Configuration &c)
-{
-    j = json{
-        {"allow_vpn", c.behavior},
-        {"max_bzid", c.maxBZID},
-        {"services", c.services},
-        {"block_list_url", c.blockListUrl},
-        {"report_url", c.reportUrl},
+    struct ApiResponse {
+        std::vector<std::string> fieldsToReport;
+        BlockDefinition blockDefinition;
     };
-}
 
-void from_json(const json &j, BlockDefinition &b)
-{
-    j.at("key").get_to(b.key);
-    j.at("value").get_to(b.value);
-}
+    struct Service {
+        ServiceType type;
+        std::string url;
+        std::unordered_map<std::string, std::string> queryParams;
+        std::unordered_map<std::string, std::string> headers;
+        ApiResponse response;
 
-void from_json(const json &j, ApiResponse &a)
-{
-    j.at("report").get_to(a.fieldsToReport);
-    j.at("disallow").get_to(a.blockDefinition);
-}
+        bz_APIStringList* urlHeaders;
+        std::string ipAddress;
 
-void from_json(const json &j, Service &s)
-{
-    j.at("type").get_to(s.type);
-    j.at("url").get_to(s.url);
+        Service() {
+            urlHeaders = bz_newStringList();
+            ipAddress = "";
+        }
 
-    if (s.type == IPHub)
+        ~Service() {
+            bz_deleteStringList(urlHeaders);
+        }
+
+        void sendRequestForIP(std::string ip, bz_URLHandler_V2* handler)
+        {
+            ipAddress = ip;
+
+            setHeaders();
+
+            bool urlJobSent = bz_addURLJob(getURL().c_str(), handler, (void*)this, NULL, urlHeaders);
+
+            debugMessage(3, "IP check %s", urlJobSent ? "sent successfully" : "failed to send");
+            debugMessage(3, "  Sending to: %s", url.c_str());
+        }
+
+        bool shouldBlock(std::string returnResponse)
+        {
+            json data = json::parse(returnResponse);
+
+            std::string keyToBlock = response.blockDefinition.key;
+            std::string valueToBlock = response.blockDefinition.value;
+
+            return data[keyToBlock].get<std::string>() == valueToBlock;
+        }
+
+    protected:
+        std::string getURL()
+        {
+            return setPlaceholderValues(url) + getQueryParameters();
+        }
+
+        std::string getQueryParameters()
+        {
+            bz_APIStringList parameters;
+
+            for (auto &param : queryParams)
+            {
+                parameters.push_back(param.first + "=" + bz_urlEncode(setPlaceholderValues(param.second).c_str()));
+            }
+
+            return bz_format("?%s", parameters.join("&"));
+        }
+
+        void setHeaders()
+        {
+            for (auto &header : headers)
+            {
+                bz_ApiString header_raw = bz_format("%s: %s", header.first.c_str(), setPlaceholderValues(header.second).c_str());
+                urlHeaders->push_back(header_raw);
+            }
+        }
+
+        std::string setPlaceholderValues(std::string str)
+        {
+            bz_ApiString msg = str;
+
+            msg.replaceAll("{ip}", ipAddress.c_str());
+
+            return msg;
+        }
+    };
+
+    struct Settings {
+        VpnWhitelist behavior = None;
+        int maxBZID;
+        std::vector<Service> services;
+        std::string blockListUrl;
+        std::string reportUrl;
+
+        void reportVPN(std::string ipAddress, json body)
+        {
+            if (reportUrl.empty())
+            {
+                return;
+            }
+
+            bz_ApiString query = "query=reportVPN";
+
+            bz_APIStringList parameters;
+
+            parameters.push_back(query);
+
+            for (auto &it : body.items())
+            {
+                std::string key = it.key();
+                std::string val = it.value();
+
+                bz_ApiString curr = bz_format("%s=%s", key.c_str(), bz_urlEncode(val.c_str()));
+                parameters.push_back(curr);
+            }
+
+            bz_addURLJob(reportUrl.c_str(), NULL, parameters.join("&"));
+        }
+    };
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(ServiceType, {
+        {IPHub, "iphub"},
+        {Custom, "custom"},
+    })
+
+    NLOHMANN_JSON_SERIALIZE_ENUM(VpnWhitelist, {
+        {None, "none"},
+        {Verified, "verified"},
+    })
+
+    void to_json(json &j, const BlockDefinition &b)
     {
-        s.headers["X-Key"] = j.at("key").get<std::string>();
+        j = json{
+            {"key", b.key},
+            {"value", b.value},
+        };
     }
-    else if (s.type == Custom)
-    {
-        j.at("query_params").get_to(s.queryParams);
-        j.at("headers").get_to(s.headers);
-        j.at("response").get_to(s.response);
-    }
-}
 
-void from_json(const json &j, Configuration &c)
-{
-    j.at("allow_vpn").get_to(c.behavior);
-    j.at("max_bzid").get_to(c.maxBZID);
-    j.at("services").get_to(c.services);
-    j.at("block_list_url").get_to(c.blockListUrl);
-    j.at("report_url").get_to(c.reportUrl);
+    void to_json(json &j, const ApiResponse &a)
+    {
+        j = json{
+            {"report", json(a.fieldsToReport)},
+            {"disallow", a.blockDefinition},
+        };
+    }
+
+    void to_json(json &j, const Service &s)
+    {
+        j = json{
+            {"type", s.type},
+            {"url", s.url},
+            {"query_params", json(s.queryParams)},
+            {"headers", json(s.headers)},
+            {"response", s.response},
+        };
+    }
+
+    void to_json(json &j, const Settings &c)
+    {
+        j = json{
+            {"allow_vpn", c.behavior},
+            {"max_bzid", c.maxBZID},
+            {"services", c.services},
+            {"block_list_url", c.blockListUrl},
+            {"report_url", c.reportUrl},
+        };
+    }
+
+    void from_json(const json &j, BlockDefinition &b)
+    {
+        j.at("key").get_to(b.key);
+        j.at("value").get_to(b.value);
+    }
+
+    void from_json(const json &j, ApiResponse &a)
+    {
+        j.at("report").get_to(a.fieldsToReport);
+        j.at("disallow").get_to(a.blockDefinition);
+    }
+
+    void from_json(const json &j, Service &s)
+    {
+        j.at("type").get_to(s.type);
+
+        if (s.type == IPHub)
+        {
+            s.url = "http://v2.api.iphub.info/ip/{ip}";
+
+            s.headers["X-Key"] = j.at("key").get<std::string>();
+
+            s.response = ApiResponse();
+            s.response.fieldsToReport = {"ip"};
+            s.response.blockDefinition = BlockDefinition();
+            s.response.blockDefinition.key = "block";
+            s.response.blockDefinition.value = "1";
+        }
+        else if (s.type == Custom)
+        {
+            j.at("url").get_to(s.url);
+            j.at("query_params").get_to(s.queryParams);
+            j.at("headers").get_to(s.headers);
+            j.at("response").get_to(s.response);
+        }
+    }
+
+    void from_json(const json &j, Settings &c)
+    {
+        j.at("allow_vpn").get_to(c.behavior);
+        j.at("max_bzid").get_to(c.maxBZID);
+        j.at("services").get_to(c.services);
+        j.at("block_list_url").get_to(c.blockListUrl);
+        j.at("report_url").get_to(c.reportUrl);
+    }
 }
 
 class VPNBlocker : public bz_Plugin, public bz_CustomSlashCommandHandler, public bz_URLHandler_V2
@@ -222,11 +328,12 @@ public:
 
 private:
     bool allowedToUseVPN(int playerID);
-    void reloadConfiguration();
+    void reloadSettings();
     void nextQuery();
 
+    std::string CONFIG_PATH;
     bool loadSuccessful;
-    bool webBusy;
+    int remainingWeb;
 
     enum QueryType
     {
@@ -241,17 +348,6 @@ private:
         int playerID;
         std::string callsign;
         std::string ipAddress;
-
-        std::string getURLCall()
-        {
-            bz_ApiString url;
-            url.format("%s%s", CONFIG_URL.c_str(), ipAddress.c_str());
-
-            debugMessage(3, "Executing the following URL job...");
-            debugMessage(3, "    %s", url.c_str());
-
-            return url;
-        }
     };
 
     struct CachedAddressEntry
@@ -261,20 +357,11 @@ private:
         std::string ipAddress;
     };
 
-    std::map<std::string, CachedAddressEntry> whiteList;
+    std::map<std::string, CachedAddressEntry> cachedIPs;
     std::queue<ApiQuery> queryQueue;
 
-    Configuration conf;
+    config::Settings conf;
     ApiQuery currentQuery;
-
-    // Configuration settings
-
-    std::string
-        CONFIG_PATH,
-        VPN_BLOCKLIST_URL,
-        VPN_REPORT_URL;
-
-    bz_APIStringList *curlHeaders;
 };
 
 BZ_PLUGIN(VPNBlocker)
@@ -294,9 +381,9 @@ const char* VPNBlocker::Name()
 void VPNBlocker::Init(const char* config)
 {
     CONFIG_PATH = config;
-    webBusy = false;
+    remainingWeb = 0;
 
-    reloadConfiguration();
+    reloadSettings();
 
     Register(bz_eAllowPlayer);
     Register(bz_ePlayerJoinEvent);
@@ -327,9 +414,9 @@ void VPNBlocker::Event(bz_EventData* eventData)
         {
             bz_AllowPlayerEventData_V1 *data = (bz_AllowPlayerEventData_V1*)eventData;
 
-            if (whiteList.find(data->ipAddress) != whiteList.end())
+            if (cachedIPs.find(data->ipAddress) != cachedIPs.end())
             {
-                if (whiteList[data->ipAddress].isProxy && !allowedToUseVPN(data->playerID))
+                if (cachedIPs[data->ipAddress].isProxy && !allowedToUseVPN(data->playerID))
                 {
                     data->reason = "Your host has been detected as a VPN. Please do not use a VPN while playing on this server.";
                     data->allow = false;
@@ -342,7 +429,7 @@ void VPNBlocker::Event(bz_EventData* eventData)
         {
             bz_PlayerJoinPartEventData_V1 *data = (bz_PlayerJoinPartEventData_V1*)eventData;
 
-            if (whiteList.find(data->record->ipAddress) == whiteList.end() && !allowedToUseVPN(data->playerID))
+            if (cachedIPs.find(data->record->ipAddress) == cachedIPs.end() && !allowedToUseVPN(data->playerID))
             {
                 ApiQuery query;
                 query.type = qApiCheck;
@@ -370,11 +457,11 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
     {
         if (params->size() == 0)
         {
-            reloadConfiguration();
+            reloadSettings();
         }
         else if (params->get(0) == "vpnblocker")
         {
-            reloadConfiguration();
+            reloadSettings();
             return true;
         }
     }
@@ -388,7 +475,7 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
 
         bz_sendTextMessagef(BZ_SERVER, playerID, "Currently blocked VPN IPs:");
 
-        for (auto entry : whiteList)
+        for (auto entry : cachedIPs)
         {
             CachedAddressEntry &e = entry.second;
 
@@ -403,7 +490,7 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
     return false;
 }
 
-void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*size*/, bool complete)
+void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*/, bool complete)
 {
     std::string webData = (const char*)data;
 
@@ -411,9 +498,7 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 
     if (complete)
     {
-        bz_deleteStringList(curlHeaders);
-
-        webBusy = false;
+        remainingWeb--;
         json response = json::parse(webData.c_str());
 
         switch (currentQuery.type)
@@ -424,10 +509,16 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
                 entry.ipAddress = currentQuery.ipAddress;
                 entry.callsign = currentQuery.callsign;
 
-                // See special value 1: https://iphub.info/api
-                entry.isProxy = (response["block"] == 1);
+                config::Service* srvHandler = (config::Service*)token;
 
-                whiteList[entry.ipAddress] = entry;
+                if (!srvHandler)
+                {
+                    return;
+                }
+
+                entry.isProxy = srvHandler->shouldBlock(webData);
+
+                cachedIPs[entry.ipAddress] = entry;
 
                 if (entry.isProxy)
                 {
@@ -450,15 +541,7 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
                     bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", entry.callsign.c_str(), entry.ipAddress.c_str());
                     noticeMessage(0, "Player %s (%s) removed for VPN usage", entry.callsign.c_str(), entry.ipAddress.c_str());
 
-                    if (VPN_REPORT_URL != "0")
-                    {
-                        bz_ApiString query;
-                        query.format("query=%s&callsign=%s&ipAddress=%s&host=%s&country=%s&asn=%s",
-                                     "reportVPN", entry.callsign.c_str(), entry.ipAddress.c_str(), response["hostname"].get<std::string>().c_str(),
-                                     response["countryName"].get<std::string>().c_str(), response["asn"].get<std::string>().c_str());
-
-                        bz_addURLJob(VPN_REPORT_URL.c_str(), NULL, query.c_str());
-                    }
+                    conf.reportVPN(entry.ipAddress, response);
                 }
                 else
                 {
@@ -469,20 +552,20 @@ void VPNBlocker::URLDone(const char* /*URL*/, const void *data, unsigned int /*s
 
             case qFetchVpnList:
             {
-                for (auto item : response)
+                for (auto &item : response)
                 {
                     CachedAddressEntry entry;
                     entry.ipAddress = item["ipAddress"];
                     entry.isProxy = true;
 
-                    whiteList[entry.ipAddress] = entry;
+                    cachedIPs[entry.ipAddress] = entry;
                 }
             }
             break;
 
             default:
             {
-                warnMessage(0, "An unknown query type was made to URL: %s", currentQuery.getURLCall().c_str());
+                warnMessage(0, "An unknown query type was made to URL: %s", URL);
             }
             break;
         }
@@ -495,7 +578,7 @@ void VPNBlocker::URLTimeout(const char* URL, int /*errorCode*/)
 {
     errorMessage(0, "Query timed out to %s", URL);
 
-    webBusy = false;
+    remainingWeb--;
     nextQuery();
 }
 
@@ -504,37 +587,32 @@ void VPNBlocker::URLError(const char* URL, int /*errorCode*/, const char* errorS
     errorMessage(0, "Query error to %s", URL);
     errorMessage(0, "  error message: %s", errorString);
 
-    webBusy = false;
+    remainingWeb--;
     nextQuery();
 }
 
+/**
+ * A query is defined a dynamic number of API calls to Services that will be made per player.
+ */
 void VPNBlocker::nextQuery()
 {
-    if (CONFIG_API_KEY.empty() || CONFIG_URL.empty())
-    {
-        errorMessage(0, "Either `API_KEY` or `API_URL` has not been configured correctly; no URL call can be made.");
-        return;
-    }
-
     debugMessage(3, "Preparing to send next queued IP check");
 
-    if (!queryQueue.empty() && !webBusy)
+    if (!queryQueue.empty() && remainingWeb <= 0)
     {
-        webBusy = true;
+        remainingWeb = (int)conf.services.size();
         currentQuery = queryQueue.front();
 
-        curlHeaders = bz_newStringList();
-        curlHeaders->push_back("X-Key: " + CONFIG_API_KEY);
-
-        bool urlJobSent = bz_addURLJob(currentQuery.getURLCall().c_str(), this, NULL, NULL, curlHeaders);
-
-        debugMessage(3, "IP check %s", urlJobSent ? "sent successfully" : "failed to send");
+        for (auto &service : conf.services)
+        {
+            service.sendRequestForIP(currentQuery.ipAddress, this);
+        }
 
         queryQueue.pop();
     }
     else
     {
-        if (webBusy)
+        if (remainingWeb >= 1)
         {
             debugMessage(3, "Web jobs are currently busy");
         }
@@ -551,7 +629,7 @@ void VPNBlocker::nextQuery()
  *
  * The "ALLOWVPN" permission will always supersede any settings.
  *
- * @param playerID
+ * @param playerID The ID of the player to check
  *
  * @return True if the player is allowed to use a VPN.
  */
@@ -564,7 +642,7 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
 
     switch (conf.behavior)
     {
-        case Verified:
+        case config::Verified:
         {
             int bzID = 0;
             bool allowed = false;
@@ -592,16 +670,16 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
 }
 
 /**
- * Load the configuration file from the same path that was stored since the plug-in was first loaded.
+ * Load the Settings file from the same path that was stored since the plug-in was first loaded.
  */
-void VPNBlocker::reloadConfiguration()
+void VPNBlocker::reloadSettings()
 {
     std::string content = getFileText(CONFIG_PATH);
 
     if (content.empty())
     {
         loadSuccessful = false;
-        errorMessage(0, "The configuration file could not be loaded: %s", CONFIG_PATH.c_str());
+        errorMessage(0, "The Settings file could not be loaded: %s", CONFIG_PATH.c_str());
 
         return;
     }
@@ -611,11 +689,11 @@ void VPNBlocker::reloadConfiguration()
     if (raw_conf.is_discarded())
     {
         loadSuccessful = false;
-        errorMessage(0, "Configuration file failed to load due to containing invalid JSON.");
+        errorMessage(0, "Settings file failed to load due to containing invalid JSON.");
 
         return;
     }
 
-    conf = raw_conf.get<Configuration>();
+    conf = raw_conf.get<config::Settings>();
     loadSuccessful = true;
 }
