@@ -25,15 +25,11 @@ THE SOFTWARE.
 #include <queue>
 
 #include "bzfsAPI.h"
-#include "plugin_config.h"
 #include "plugin_files.h"
 
 #include "nlohmann/json.hpp"
 
 using json = nlohmann::json;
-
-static std::string CONFIG_API_KEY;
-static std::string CONFIG_URL;
 
 // Define plug-in name
 const std::string PLUGIN_NAME = "VPN Blocker";
@@ -42,47 +38,48 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 2;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 41;
+const int BUILD = 42;
 
-// Logging helper functions
-static void logMessage(const char *type, int level, const char *message, va_list args)
-{
-    char buffer[4096];
-    vsnprintf(buffer, 4096, message, args);
+namespace logging {
+    static void logMessage(const char *type, int level, const char *message, va_list args)
+    {
+        char buffer[4096];
+        vsnprintf(buffer, 4096, message, args);
 
-    bz_debugMessagef(level, "%s :: %s :: %s", bz_toupper(type), PLUGIN_NAME.c_str(), buffer);
-}
+        bz_debugMessagef(level, "%s :: %s :: %s", bz_toupper(type), PLUGIN_NAME.c_str(), buffer);
+    }
 
-static void errorMessage(int level, const char *message, ...)
-{
-    va_list args;
-    va_start(args, message);
-    logMessage("error", level, message, args);
-    va_end(args);
-}
+    static void debug(int level, const char *message, ...)
+    {
+        va_list args;
+        va_start(args, message);
+        logMessage("debug", level, message, args);
+        va_end(args);
+    }
 
-static void warnMessage(int level, const char *message, ...)
-{
-    va_list args;
-    va_start(args, message);
-    logMessage("warning", level, message, args);
-    va_end(args);
-}
+    static void notice(int level, const char *message, ...)
+    {
+        va_list args;
+        va_start(args, message);
+        logMessage("notice", level, message, args);
+        va_end(args);
+    }
 
-static void noticeMessage(int level, const char *message, ...)
-{
-    va_list args;
-    va_start(args, message);
-    logMessage("notice", level, message, args);
-    va_end(args);
-}
+    static void warn(int level, const char *message, ...)
+    {
+        va_list args;
+        va_start(args, message);
+        logMessage("warning", level, message, args);
+        va_end(args);
+    }
 
-static void debugMessage(int level, const char *message, ...)
-{
-    va_list args;
-    va_start(args, message);
-    logMessage("debug", level, message, args);
-    va_end(args);
+    static void error(int level, const char *message, ...)
+    {
+        va_list args;
+        va_start(args, message);
+        logMessage("error", level, message, args);
+        va_end(args);
+    }
 }
 
 namespace config
@@ -134,8 +131,8 @@ namespace config
 
             bool urlJobSent = bz_addURLJob(getURL().c_str(), handler, (void*)this, NULL, urlHeaders);
 
-            debugMessage(3, "IP check %s", urlJobSent ? "sent successfully" : "failed to send");
-            debugMessage(3, "  Sending to: %s", url.c_str());
+            logging::debug(3, "IP check %s", urlJobSent ? "sent successfully" : "failed to send");
+            logging::debug(3, "  Sending to: %s", url.c_str());
         }
 
         bool shouldBlock(std::string returnResponse)
@@ -439,7 +436,7 @@ void VPNBlocker::Event(bz_EventData* eventData)
 
                 queryQueue.push(query);
 
-                debugMessage(3, "Queueing IP check for [#%d] %s (%s)", query.playerID, query.callsign.c_str(), query.ipAddress.c_str());
+                logging::debug(3, "Queueing IP check for [#%d] %s (%s)", query.playerID, query.callsign.c_str(), query.ipAddress.c_str());
 
                 nextQuery();
             }
@@ -494,7 +491,7 @@ void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*
 {
     std::string webData = (const char*)data;
 
-    debugMessage(3, "Incoming URL job response was completed %ssuccessfully", complete ? "" : "un");
+    logging::debug(3, "Incoming URL job response was completed %ssuccessfully", complete ? "" : "un");
 
     if (complete)
     {
@@ -522,13 +519,13 @@ void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*
 
                 if (entry.isProxy)
                 {
-                    debugMessage(3, "IP %s has been detected as a VPN", entry.ipAddress.c_str());
+                    logging::debug(3, "IP %s has been detected as a VPN", entry.ipAddress.c_str());
 
                     const char* currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
 
                     if (!currentIP)
                     {
-                        noticeMessage(0, "IP %s blocked as VPN, but no player found with this IP.", entry.ipAddress.c_str());
+                        logging::notice(0, "IP %s blocked as VPN, but no player found with this IP.", entry.ipAddress.c_str());
                         return;
                     }
 
@@ -539,13 +536,13 @@ void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*
                     }
 
                     bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", entry.callsign.c_str(), entry.ipAddress.c_str());
-                    noticeMessage(0, "Player %s (%s) removed for VPN usage", entry.callsign.c_str(), entry.ipAddress.c_str());
+                    logging::notice(0, "Player %s (%s) removed for VPN usage", entry.callsign.c_str(), entry.ipAddress.c_str());
 
                     conf.reportVPN(entry.ipAddress, response);
                 }
                 else
                 {
-                    debugMessage(4, "Connection from %s not detected as a VPN", entry.ipAddress.c_str());
+                    logging::debug(4, "Connection from %s not detected as a VPN", entry.ipAddress.c_str());
                 }
             }
             break;
@@ -565,7 +562,7 @@ void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*
 
             default:
             {
-                warnMessage(0, "An unknown query type was made to URL: %s", URL);
+                logging::warn(0, "An unknown query type was made to URL: %s", URL);
             }
             break;
         }
@@ -576,7 +573,7 @@ void VPNBlocker::URLDone(const char* URL, const void *data, unsigned int /*size*
 
 void VPNBlocker::URLTimeout(const char* URL, int /*errorCode*/)
 {
-    errorMessage(0, "Query timed out to %s", URL);
+    logging::error(0, "Query timed out to %s", URL);
 
     remainingWeb--;
     nextQuery();
@@ -584,8 +581,8 @@ void VPNBlocker::URLTimeout(const char* URL, int /*errorCode*/)
 
 void VPNBlocker::URLError(const char* URL, int /*errorCode*/, const char* errorString)
 {
-    errorMessage(0, "Query error to %s", URL);
-    errorMessage(0, "  error message: %s", errorString);
+    logging::error(0, "Query error to %s", URL);
+    logging::error(0, "  error message: %s", errorString);
 
     remainingWeb--;
     nextQuery();
@@ -596,7 +593,7 @@ void VPNBlocker::URLError(const char* URL, int /*errorCode*/, const char* errorS
  */
 void VPNBlocker::nextQuery()
 {
-    debugMessage(3, "Preparing to send next queued IP check");
+    logging::debug(3, "Preparing to send next queued IP check");
 
     if (!queryQueue.empty() && remainingWeb <= 0)
     {
@@ -614,12 +611,12 @@ void VPNBlocker::nextQuery()
     {
         if (remainingWeb >= 1)
         {
-            debugMessage(3, "Web jobs are currently busy");
+            logging::debug(3, "Web jobs are currently busy");
         }
 
         if (queryQueue.empty())
         {
-            debugMessage(3, "nextQuery() was called but the queue was empty");
+            logging::debug(3, "nextQuery() was called but the queue was empty");
         }
     }
 }
@@ -679,7 +676,7 @@ void VPNBlocker::reloadSettings()
     if (content.empty())
     {
         loadSuccessful = false;
-        errorMessage(0, "The Settings file could not be loaded: %s", CONFIG_PATH.c_str());
+        logging::error(0, "The Settings file could not be loaded: %s", CONFIG_PATH.c_str());
 
         return;
     }
@@ -689,7 +686,7 @@ void VPNBlocker::reloadSettings()
     if (raw_conf.is_discarded())
     {
         loadSuccessful = false;
-        errorMessage(0, "Settings file failed to load due to containing invalid JSON.");
+        logging::error(0, "Settings file failed to load due to containing invalid JSON.");
 
         return;
     }
