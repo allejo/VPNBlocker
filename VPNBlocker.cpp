@@ -38,7 +38,8 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 2;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 42;
+const int BUILD = 45;
+const std::string SUFFIX = "Alpha 1";
 
 namespace logging
 {
@@ -415,6 +416,11 @@ const char *VPNBlocker::Name()
     if (!pluginBuild)
     {
         pluginBuild = bz_format("%s %d.%d.%d (%d)", PLUGIN_NAME.c_str(), MAJOR, MINOR, REV, BUILD);
+
+        if (!SUFFIX.empty())
+        {
+            pluginBuild = bz_format("%s - %s", pluginBuild, SUFFIX.c_str());
+        }
     }
 
     return pluginBuild;
