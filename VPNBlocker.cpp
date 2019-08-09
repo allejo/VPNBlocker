@@ -118,42 +118,85 @@ namespace config
         ApiResponse response;
 
         bz_APIStringList *urlHeaders;
-        std::string ipAddress;
 
         Service()
         {
-            urlHeaders = bz_newStringList();
             ipAddress = "";
+            initialized = false;
         }
 
-        ~Service()
+        std::string sendRequestForIP(std::string ip, bz_URLHandler_V2 *handler)
         {
-            bz_deleteStringList(urlHeaders);
-        }
+            init();
 
-        void sendRequestForIP(std::string ip, bz_URLHandler_V2 *handler)
-        {
             ipAddress = ip;
+            std::string fullUrl = getURL();
 
-            setHeaders();
-
-            bool urlJobSent = bz_addURLJob(getURL().c_str(), handler, (void *) this, NULL, urlHeaders);
+            bool urlJobSent = bz_addURLJob(fullUrl.c_str(), handler, (void *) this, NULL, urlHeaders);
 
             logging::debug(3, "IP check %s", urlJobSent ? "sent successfully" : "failed to send");
             logging::debug(3, "  Sending to: %s", url.c_str());
+
+            return fullUrl;
         }
 
         bool shouldBlock(std::string returnResponse)
         {
-            json data = json::parse(returnResponse);
+            json data = json::parse(returnResponse, NULL, false);
+
+            if (data.is_discarded())
+            {
+                return false;
+            }
 
             std::string keyToBlock = response.blockDefinition.key;
             std::string valueToBlock = response.blockDefinition.value;
 
-            return data[keyToBlock].get<std::string>() == valueToBlock;
+            if (!data.count(keyToBlock))
+            {
+                logging::warn(0, "The '%s' key was not found in the following JSON: %s", keyToBlock.c_str(), returnResponse.c_str());
+
+                return false;
+            }
+
+            json value = data[keyToBlock];
+
+            if (value.is_boolean())
+            {
+                return value;
+            }
+            else if (value.is_number())
+            {
+                return std::to_string((int) value) == valueToBlock;
+            }
+            else if (value.is_string())
+            {
+                return value == valueToBlock;
+            }
+
+            return false;
         }
 
     protected:
+        std::string ipAddress;
+        bool initialized;
+
+        void init()
+        {
+            if (initialized)
+            {
+                return;
+            }
+
+            for (auto &header : headers)
+            {
+                bz_ApiString header_raw = bz_format("%s: %s", header.first.c_str(), header.second.c_str());
+                urlHeaders->push_back(header_raw);
+            }
+
+            initialized = true;
+        }
+
         std::string getURL()
         {
             return setPlaceholderValues(url) + getQueryParameters();
@@ -169,15 +212,6 @@ namespace config
             }
 
             return bz_format("?%s", parameters.join("&"));
-        }
-
-        void setHeaders()
-        {
-            for (auto &header : headers)
-            {
-                bz_ApiString header_raw = bz_format("%s: %s", header.first.c_str(), setPlaceholderValues(header.second).c_str());
-                urlHeaders->push_back(header_raw);
-            }
         }
 
         std::string setPlaceholderValues(std::string str)
@@ -337,11 +371,10 @@ private:
     bool allowedToUseVPN(int playerID);
 
     void reloadSettings();
-    void nextQuery();
+    void queryTick();
 
     std::string CONFIG_PATH;
     bool loadSuccessful;
-    int remainingWeb;
 
     enum QueryType
     {
@@ -350,7 +383,7 @@ private:
         qFetchVpnList
     };
 
-    struct ApiQuery
+    struct VPNCheckRequest
     {
         QueryType type;
         int playerID;
@@ -358,18 +391,19 @@ private:
         std::string ipAddress;
     };
 
-    struct CachedAddressEntry
+    struct VPNStatusResult
     {
         bool isProxy;
         std::string callsign;
         std::string ipAddress;
     };
 
-    std::map<std::string, CachedAddressEntry> cachedIPs;
-    std::queue<ApiQuery> queryQueue;
+    std::map<std::string, VPNStatusResult> cachedIPs;
+    std::map<std::string, std::queue<std::string>> playerApiQueries;
+    std::queue<VPNCheckRequest> queryQueue;
 
     config::Settings conf;
-    ApiQuery currentQuery;
+    VPNCheckRequest currentQuery;
 };
 
 BZ_PLUGIN(VPNBlocker)
@@ -389,7 +423,6 @@ const char *VPNBlocker::Name()
 void VPNBlocker::Init(const char *config)
 {
     CONFIG_PATH = config;
-    remainingWeb = 0;
 
     reloadSettings();
 
@@ -402,6 +435,11 @@ void VPNBlocker::Init(const char *config)
 
 void VPNBlocker::Cleanup()
 {
+    for (auto &service : conf.services)
+    {
+        bz_deleteStringList(service.urlHeaders);
+    }
+
     Flush();
 
     bz_removeCustomSlashCommand("reload");
@@ -439,17 +477,17 @@ void VPNBlocker::Event(bz_EventData *eventData)
 
             if (cachedIPs.find(data->record->ipAddress) == cachedIPs.end() && !allowedToUseVPN(data->playerID))
             {
-                ApiQuery query;
-                query.type = qApiCheck;
-                query.playerID = data->playerID;
-                query.callsign = data->record->callsign;
-                query.ipAddress = data->record->ipAddress;
+                VPNCheckRequest request;
+                request.type = qApiCheck;
+                request.playerID = data->playerID;
+                request.callsign = data->record->callsign;
+                request.ipAddress = data->record->ipAddress;
 
-                queryQueue.push(query);
+                queryQueue.push(request);
 
-                logging::debug(3, "Queueing IP check for [#%d] %s (%s)", query.playerID, query.callsign.c_str(), query.ipAddress.c_str());
+                logging::debug(3, "Queueing IP check for [#%d] %s (%s)", request.playerID, request.callsign.c_str(), request.ipAddress.c_str());
 
-                nextQuery();
+                queryTick();
             }
         }
         break;
@@ -485,7 +523,7 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
 
         for (auto entry : cachedIPs)
         {
-            CachedAddressEntry &e = entry.second;
+            VPNStatusResult &e = entry.second;
 
             if (!e.isProxy)
             {
@@ -507,90 +545,109 @@ void VPNBlocker::URLDone(const char *URL, const void *data, unsigned int /*size*
 
     logging::debug(3, "Incoming URL job response was completed %ssuccessfully", complete ? "" : "un");
 
-    if (complete)
+    if (!complete)
     {
-        remainingWeb--;
-        json response = json::parse(webData.c_str());
+        return;
+    }
 
-        switch (currentQuery.type)
+    json response = json::parse(webData, NULL, false);
+
+    if (response.is_discarded())
+    {
+        return;
+    }
+
+    switch (currentQuery.type)
+    {
+        case qApiCheck:
         {
-            case qApiCheck:
+            VPNStatusResult result;
+            result.ipAddress = currentQuery.ipAddress;
+            result.callsign = currentQuery.callsign;
+
+            config::Service *srvHandler = (config::Service *) token;
+
+            if (!srvHandler)
             {
-                CachedAddressEntry entry;
-                entry.ipAddress = currentQuery.ipAddress;
-                entry.callsign = currentQuery.callsign;
+                return;
+            }
 
-                config::Service *srvHandler = (config::Service *) token;
+            result.isProxy = srvHandler->shouldBlock(webData);
 
-                if (!srvHandler)
+            cachedIPs[result.ipAddress] = result;
+            auto &apiQueue = playerApiQueries[currentQuery.ipAddress];
+
+            apiQueue.pop();
+
+            if (result.isProxy)
+            {
+                logging::debug(3, "IP %s has been detected as a VPN", result.ipAddress.c_str());
+
+                if (playerApiQueries.count(currentQuery.ipAddress))
                 {
+                    while (!apiQueue.empty())
+                    {
+                        std::string q = apiQueue.front();
+                        bz_removeURLJob(q.c_str());
+
+                        apiQueue.pop();
+                    }
+                }
+
+                const char *currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
+
+                if (!currentIP)
+                {
+                    logging::notice(0, "IP %s blocked as VPN, but no player found with this IP.", result.ipAddress.c_str());
                     return;
                 }
 
-                entry.isProxy = srvHandler->shouldBlock(webData);
+                // Only kick the user if it's the same IP, otherwise another player might have joined with the same ID
+                if (strcmp(currentIP, currentQuery.ipAddress.c_str()) == 0)
+                {
+                    bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", true);
+                }
+
+                bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", result.callsign.c_str(), result.ipAddress.c_str());
+                logging::notice(0, "Player %s (%s) removed for VPN usage", result.callsign.c_str(), result.ipAddress.c_str());
+
+                conf.reportVPN(result.ipAddress, response);
+            }
+            else
+            {
+                logging::debug(4, "Connection from %s not detected as a VPN", result.ipAddress.c_str());
+            }
+        }
+        break;
+
+        case qFetchVpnList:
+        {
+            for (auto &item : response)
+            {
+                VPNStatusResult entry;
+                entry.ipAddress = item["ipAddress"];
+                entry.isProxy = true;
 
                 cachedIPs[entry.ipAddress] = entry;
-
-                if (entry.isProxy)
-                {
-                    logging::debug(3, "IP %s has been detected as a VPN", entry.ipAddress.c_str());
-
-                    const char *currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
-
-                    if (!currentIP)
-                    {
-                        logging::notice(0, "IP %s blocked as VPN, but no player found with this IP.", entry.ipAddress.c_str());
-                        return;
-                    }
-
-                    // Only kick the user if it's the same IP, otherwise another player might have joined with the same ID
-                    if (strcmp(currentIP, currentQuery.ipAddress.c_str()) == 0)
-                    {
-                        bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", true);
-                    }
-
-                    bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", entry.callsign.c_str(), entry.ipAddress.c_str());
-                    logging::notice(0, "Player %s (%s) removed for VPN usage", entry.callsign.c_str(), entry.ipAddress.c_str());
-
-                    conf.reportVPN(entry.ipAddress, response);
-                }
-                else
-                {
-                    logging::debug(4, "Connection from %s not detected as a VPN", entry.ipAddress.c_str());
-                }
             }
-            break;
-
-            case qFetchVpnList:
-            {
-                for (auto &item : response)
-                {
-                    CachedAddressEntry entry;
-                    entry.ipAddress = item["ipAddress"];
-                    entry.isProxy = true;
-
-                    cachedIPs[entry.ipAddress] = entry;
-                }
-            }
-            break;
-
-            default:
-            {
-                logging::warn(0, "An unknown query type was made to URL: %s", URL);
-            }
-            break;
         }
+        break;
 
-        nextQuery();
+        default:
+        {
+            logging::warn(0, "An unknown query type was made to URL: %s", URL);
+        }
+        break;
     }
+
+    queryTick();
 }
 
 void VPNBlocker::URLTimeout(const char *URL, int /*errorCode*/)
 {
     logging::error(0, "Query timed out to %s", URL);
 
-    remainingWeb--;
-    nextQuery();
+    queryTick();
 }
 
 void VPNBlocker::URLError(const char *URL, int /*errorCode*/, const char *errorString)
@@ -598,41 +655,33 @@ void VPNBlocker::URLError(const char *URL, int /*errorCode*/, const char *errorS
     logging::error(0, "Query error to %s", URL);
     logging::error(0, "  error message: %s", errorString);
 
-    remainingWeb--;
-    nextQuery();
+    queryTick();
 }
 
 /**
  * A query is defined a dynamic number of API calls to Services that will be made per player.
  */
-void VPNBlocker::nextQuery()
+void VPNBlocker::queryTick()
 {
     logging::debug(3, "Preparing to send next queued IP check");
 
-    if (!queryQueue.empty() && remainingWeb <= 0)
+    if (queryQueue.empty())
     {
-        remainingWeb = (int) conf.services.size();
-        currentQuery = queryQueue.front();
+        logging::debug(4, "queryTick() was called by queue was empty");
 
-        for (auto &service : conf.services)
-        {
-            service.sendRequestForIP(currentQuery.ipAddress, this);
-        }
-
-        queryQueue.pop();
+        return;
     }
-    else
+
+    currentQuery = queryQueue.front();
+
+    for (auto &service : conf.services)
     {
-        if (remainingWeb >= 1)
-        {
-            logging::debug(3, "Web jobs are currently busy");
-        }
-
-        if (queryQueue.empty())
-        {
-            logging::debug(3, "nextQuery() was called but the queue was empty");
-        }
+        playerApiQueries[currentQuery.ipAddress].push(service.sendRequestForIP(currentQuery.ipAddress, this));
     }
+
+    queryQueue.pop();
+
+    queryTick();
 }
 
 /**
@@ -707,4 +756,9 @@ void VPNBlocker::reloadSettings()
 
     conf = raw_conf.get<config::Settings>();
     loadSuccessful = true;
+
+    for (auto &service : conf.services)
+    {
+        service.urlHeaders = bz_newStringList();
+    }
 }
