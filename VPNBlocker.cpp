@@ -38,7 +38,7 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 2;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 45;
+const int BUILD = 47;
 const std::string SUFFIX = "Alpha 1";
 
 namespace logging
@@ -233,25 +233,48 @@ namespace config
         std::string blockListUrl;
         std::string reportUrl;
 
-        void reportVPN(std::string ipAddress, json body)
+        void reportVPN(std::string ipAddress, json body, Service *srv)
         {
-            if (reportUrl.empty())
+            if (reportUrl.empty() || !srv)
             {
                 return;
             }
 
             bz_ApiString query = "query=reportVPN";
-
             bz_APIStringList parameters;
 
             parameters.push_back(query);
 
-            for (auto &it : body.items())
-            {
-                std::string key = it.key();
-                std::string val = it.value();
+            auto &reporting = srv->response.fieldsToReport;
 
-                bz_ApiString curr = bz_format("%s=%s", key.c_str(), bz_urlEncode(val.c_str()));
+            for (auto &field : reporting)
+            {
+                if (!body.count(field))
+                {
+                    continue;
+                }
+
+                json value = body[field];
+                std::string value_str;
+
+                if (value.is_number_integer())
+                {
+                    value_str = std::to_string((int) value);
+                }
+                else if (value.is_number_float())
+                {
+                    value_str = std::to_string((float) value);
+                }
+                else if (value.is_boolean())
+                {
+                    value_str = value ? "true" : "false";
+                }
+                else if (value.is_string())
+                {
+                    value_str = value;
+                }
+
+                bz_ApiString curr = bz_format("%s=%s", field.c_str(), bz_urlEncode(value_str.c_str()));
                 parameters.push_back(curr);
             }
 
@@ -617,7 +640,7 @@ void VPNBlocker::URLDone(const char *URL, const void *data, unsigned int /*size*
                 bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", result.callsign.c_str(), result.ipAddress.c_str());
                 logging::notice(0, "Player %s (%s) removed for VPN usage", result.callsign.c_str(), result.ipAddress.c_str());
 
-                conf.reportVPN(result.ipAddress, response);
+                conf.reportVPN(result.ipAddress, response, srvHandler);
             }
             else
             {
