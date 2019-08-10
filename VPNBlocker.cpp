@@ -20,6 +20,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
+#include <algorithm>
 #include <cstdarg>
 #include <map>
 #include <queue>
@@ -41,6 +42,9 @@ const int REV = 0;
 const int BUILD = 50;
 const std::string SUFFIX = "Alpha 2";
 
+// Define build settings
+const int VERBOSITY_LEVEL = 4;
+
 namespace logging
 {
     static void logMessage(const char *type, int level, const char *message, va_list args)
@@ -48,7 +52,7 @@ namespace logging
         char buffer[4096];
         vsnprintf(buffer, 4096, message, args);
 
-        bz_debugMessagef(level, "%s :: %s :: %s", bz_toupper(type), PLUGIN_NAME.c_str(), buffer);
+        bz_debugMessagef(std::min(VERBOSITY_LEVEL, level), "%s :: %s :: %s", bz_toupper(type), PLUGIN_NAME.c_str(), buffer);
     }
 
     static void debug(int level, const char *message, ...)
@@ -581,6 +585,9 @@ void VPNBlocker::URLDone(const char *URL, const void *data, unsigned int /*size*
 
     if (response.is_discarded())
     {
+        logging::error(0, "Response from API query could not be parsed as JSON (%s)", URL);
+        logging::error(0, "  => %s", webData.c_str());
+
         return;
     }
 
@@ -612,11 +619,15 @@ void VPNBlocker::URLDone(const char *URL, const void *data, unsigned int /*size*
 
                 if (playerApiQueries.count(currentQuery.ipAddress))
                 {
+                    logging::debug(VERBOSITY_LEVEL, "Clearing queued API queries for %s...", result.ipAddress.c_str());
+
                     while (!apiQueue.empty())
                     {
                         std::string q = apiQueue.front();
-                        bz_removeURLJob(q.c_str());
 
+                        logging::debug(VERBOSITY_LEVEL, "Removed URL job for: %s", q.c_str());
+
+                        bz_removeURLJob(q.c_str());
                         apiQueue.pop();
                     }
                 }
@@ -694,7 +705,7 @@ void VPNBlocker::queryTick()
 
     if (queryQueue.empty())
     {
-        logging::debug(4, "queryTick() was called by queue was empty");
+        logging::debug(4, "queryTick() was called but queue was empty");
 
         return;
     }
@@ -761,6 +772,8 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
  */
 void VPNBlocker::reloadSettings()
 {
+    logging::debug(VERBOSITY_LEVEL, "Loading configuration file...");
+
     cleanServicesMemory();
 
     std::string content = getFileText(CONFIG_PATH);
@@ -790,6 +803,8 @@ void VPNBlocker::reloadSettings()
     {
         service.urlHeaders = bz_newStringList();
     }
+
+    logging::debug(VERBOSITY_LEVEL, "Configuration file loaded successfully with %d services", conf.services.size());
 }
 
 /**
@@ -797,6 +812,8 @@ void VPNBlocker::reloadSettings()
  */
 void VPNBlocker::cleanServicesMemory()
 {
+    logging::debug(VERBOSITY_LEVEL, "Freeing of memory has been triggered.");
+
     for (auto &service : conf.services)
     {
         bz_deleteStringList(service.urlHeaders);
