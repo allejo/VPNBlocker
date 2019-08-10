@@ -38,8 +38,8 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 2;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 47;
-const std::string SUFFIX = "Alpha 1";
+const int BUILD = 50;
+const std::string SUFFIX = "Alpha 2";
 
 namespace logging
 {
@@ -395,6 +395,7 @@ private:
     bool allowedToUseVPN(int playerID);
 
     void reloadSettings();
+    void cleanServicesMemory();
     void queryTick();
 
     std::string CONFIG_PATH;
@@ -464,10 +465,7 @@ void VPNBlocker::Init(const char *config)
 
 void VPNBlocker::Cleanup()
 {
-    for (auto &service : conf.services)
-    {
-        bz_deleteStringList(service.urlHeaders);
-    }
+    cleanServicesMemory();
 
     Flush();
 
@@ -763,6 +761,8 @@ bool VPNBlocker::allowedToUseVPN(int playerID)
  */
 void VPNBlocker::reloadSettings()
 {
+    cleanServicesMemory();
+
     std::string content = getFileText(CONFIG_PATH);
 
     if (content.empty())
@@ -789,5 +789,16 @@ void VPNBlocker::reloadSettings()
     for (auto &service : conf.services)
     {
         service.urlHeaders = bz_newStringList();
+    }
+}
+
+/**
+ * Clean up the memory we've allocated for our Services.
+ */
+void VPNBlocker::cleanServicesMemory()
+{
+    for (auto &service : conf.services)
+    {
+        bz_deleteStringList(service.urlHeaders);
     }
 }
