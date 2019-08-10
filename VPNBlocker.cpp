@@ -683,6 +683,8 @@ void VPNBlocker::URLDone(const char *URL, const void *data, unsigned int /*size*
 
 void VPNBlocker::URLTimeout(const char *URL, int /*errorCode*/)
 {
+    playerApiQueries[currentQuery.ipAddress].pop();
+
     logging::error(0, "Query timed out to %s", URL);
 
     queryTick();
@@ -690,6 +692,8 @@ void VPNBlocker::URLTimeout(const char *URL, int /*errorCode*/)
 
 void VPNBlocker::URLError(const char *URL, int /*errorCode*/, const char *errorString)
 {
+    playerApiQueries[currentQuery.ipAddress].pop();
+
     logging::error(0, "Query error to %s", URL);
     logging::error(0, "  error message: %s", errorString);
 
