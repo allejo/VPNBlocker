@@ -398,8 +398,9 @@ public:
 private:
     bool allowedToUseVPN(int playerID);
 
-    void reloadSettings();
+    void kickPlayersByIP(std::string ip);
     void cleanServicesMemory();
+    void reloadSettings();
     void queryTick();
 
     std::string CONFIG_PATH;
@@ -632,22 +633,7 @@ void VPNBlocker::URLDone(const char *URL, const void *data, unsigned int /*size*
                     }
                 }
 
-                const char *currentIP = bz_getPlayerIPAddress(currentQuery.playerID);
-
-                if (!currentIP)
-                {
-                    logging::notice(0, "IP %s blocked as VPN, but no player found with this IP.", result.ipAddress.c_str());
-                    return;
-                }
-
-                // Only kick the user if it's the same IP, otherwise another player might have joined with the same ID
-                if (strcmp(currentIP, currentQuery.ipAddress.c_str()) == 0)
-                {
-                    bz_kickUser(currentQuery.playerID, "Your host has been detected as a VPN.", true);
-                }
-
-                bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", result.callsign.c_str(), result.ipAddress.c_str());
-                logging::notice(0, "Player %s (%s) removed for VPN usage", result.callsign.c_str(), result.ipAddress.c_str());
+                kickPlayersByIP(currentQuery.ipAddress);
 
                 conf.reportVPN(result.ipAddress, response, srvHandler);
             }
@@ -822,4 +808,27 @@ void VPNBlocker::cleanServicesMemory()
     {
         bz_deleteStringList(service.urlHeaders);
     }
+}
+
+void VPNBlocker::kickPlayersByIP(std::string ip)
+{
+    bz_APIIntList *players = bz_getPlayerIndexList();
+
+    for (unsigned int i = 0; i < players->size(); ++i)
+    {
+        int playerID = players->get(i);
+        bz_BasePlayerRecord *pr = bz_getPlayerByIndex(playerID);
+
+        if (pr->ipAddress == ip)
+        {
+            bz_kickUser(playerID, "Your host has been detected as a VPN.", true);
+
+            bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s [%s] has been blocked as a VPN.", pr->callsign.c_str(), pr->ipAddress.c_str());
+            logging::notice(0, "Player %s (%s) removed for VPN usage", pr->callsign.c_str(), pr->ipAddress.c_str());
+        }
+
+        bz_freePlayerRecord(pr);
+    }
+
+    bz_deleteIntList(players);
 }
