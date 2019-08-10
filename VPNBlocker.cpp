@@ -245,9 +245,11 @@ namespace config
             }
 
             bz_ApiString query = "query=reportVPN";
+            bz_ApiString ip = "ip=" + ipAddress;
             bz_APIStringList parameters;
 
             parameters.push_back(query);
+            parameters.push_back(ip);
 
             auto &reporting = srv->response.fieldsToReport;
 
