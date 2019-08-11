@@ -39,8 +39,8 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 const int MAJOR = 2;
 const int MINOR = 0;
 const int REV = 0;
-const int BUILD = 50;
-const std::string SUFFIX = "Alpha 2";
+const int BUILD = 56;
+const std::string SUFFIX = "Alpha 3";
 
 // Define build settings
 const int VERBOSITY_LEVEL = 4;
@@ -467,6 +467,7 @@ void VPNBlocker::Init(const char *config)
     Register(bz_ePlayerJoinEvent);
 
     bz_registerCustomSlashCommand("reload", this);
+    bz_registerCustomSlashCommand("vpnblocker", this);
     bz_registerCustomSlashCommand("vpnblocklist", this);
 }
 
@@ -477,6 +478,7 @@ void VPNBlocker::Cleanup()
     Flush();
 
     bz_removeCustomSlashCommand("reload");
+    bz_removeCustomSlashCommand("vpnblocker");
     bz_removeCustomSlashCommand("vpnblocklist");
 }
 
@@ -544,6 +546,21 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
             reloadSettings();
             return true;
         }
+    }
+    else if (command == "vpnblocker")
+    {
+        if (!bz_hasPerm(playerID, "shutdownserver"))
+        {
+            bz_sendTextMessagef(BZ_SERVER, playerID, "You do not have permission to run the /%s command", command.c_str());
+            return true;
+        }
+
+        bz_sendTextMessagef(BZ_SERVER, playerID, "VPNBlocker Status");
+        bz_sendTextMessagef(BZ_SERVER, playerID, "-----------------");
+        bz_sendTextMessagef(BZ_SERVER, playerID, "Status: %s", loadSuccessful ? "Running" : "ERROR");
+        bz_sendTextMessagef(BZ_SERVER, playerID, "Services: %d", conf.services.size());
+
+        return true;
     }
     else if (command == "vpnblocklist")
     {
