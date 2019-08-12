@@ -101,6 +101,7 @@ This plug-in implements or overrides the following slash commands.
 | Command | Permission | Description |
 | ------- | ---------- | ----------- |
 | `/reload [vpnblocker]` | setAll | Reload the configuration file this plug-in has loaded |
+| `/vpnblocker` | shutdownserver | See the status of the plug-in and see if it's running correctly |
 | `/vpnblocklist` | playerList | Displays a list of IPs that have been blocked as VPNs |
 
 ## License
