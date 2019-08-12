@@ -32,6 +32,8 @@ The configuration file is required to load the plug-in and have it function prop
 - `block_list_url` (string) - Currently unimplemented
 - `services` (object[]) - An array of API URLs to query on the VPN status of an IP
 
+This plug-in checks for an `ALLOWVPN` permission that supersedes the `allow_vpn` setting, so you can allow admins or specific players use VPNs.
+
 #### Services
 
 This plug-in will occasionally have built-in support for certain services.
