@@ -36,7 +36,7 @@ This plug-in checks for an `ALLOWVPN` permission that supersedes the `allow_vpn`
 
 #### Services
 
-This plug-in will occasionally have built-in support for certain services.
+This plug-in will occasionally have built-in support for certain services. Multiple services can be configured and they are checked in order, one at a time for each VPN check that is needed. If one service classifies the IP as a VPN, it will cancel the remaining API calls for that IP and move on to checking the next IP.
 
 ##### IPHub v2
 
