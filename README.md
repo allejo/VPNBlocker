@@ -1,7 +1,8 @@
 # VPN Blocker
 
-[![GitHub release](https://img.shields.io/badge/release-v2.0.0-blue.svg)](https://github.com/allejo/VPNBlocker/releases/latest)
+[![GitHub release](https://img.shields.io/github/release/allejo/VPNBlocker.svg)](https://github.com/allejo/VPNBlocker/releases/latest)
 ![Minimum BZFlag Version](https://img.shields.io/badge/BZFlag-v2.4.12+-blue.svg)
+[![License](https://img.shields.io/github/license/allejo/VPNBlocker.svg)](./LICENSE.md)
 
 A BZFlag plug-in that will make an API call to a third-party service to check whether or not an IP address is a VPN.
 
@@ -109,4 +110,4 @@ This plug-in implements or overrides the following slash commands.
 
 ## License
 
-MIT
+[MIT](./LICENSE.md)
