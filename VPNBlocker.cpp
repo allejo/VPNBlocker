@@ -38,8 +38,8 @@ const std::string PLUGIN_NAME = "VPN Blocker";
 // Define plug-in version numbering
 const int MAJOR = 2;
 const int MINOR = 0;
-const int REV = 0;
-const int BUILD = 62;
+const int REV = 1;
+const int BUILD = 65;
 const std::string SUFFIX = "";
 
 // Define build settings
@@ -469,6 +469,7 @@ void VPNBlocker::Init(const char *config)
     bz_registerCustomSlashCommand("reload", this);
     bz_registerCustomSlashCommand("vpnblocker", this);
     bz_registerCustomSlashCommand("vpnblocklist", this);
+    bz_registerCustomSlashCommand("vpnunblock", this);
 }
 
 void VPNBlocker::Cleanup()
@@ -480,6 +481,7 @@ void VPNBlocker::Cleanup()
     bz_removeCustomSlashCommand("reload");
     bz_removeCustomSlashCommand("vpnblocker");
     bz_removeCustomSlashCommand("vpnblocklist");
+    bz_removeCustomSlashCommand("vpnunblock");
 }
 
 void VPNBlocker::Event(bz_EventData *eventData)
@@ -582,6 +584,37 @@ bool VPNBlocker::SlashCommand(int playerID, bz_ApiString command, bz_ApiString /
             }
 
             bz_sendTextMessagef(BZ_SERVER, playerID, "    %s", e.ipAddress.c_str());
+        }
+
+        return true;
+    }
+    else if (command == "vpnunblock")
+    {
+        if (!bz_hasPerm(playerID, "unban"))
+        {
+            bz_sendTextMessagef(BZ_SERVER, playerID, "You do not have permission to run the /%s command", command.c_str());
+            return true;
+        }
+
+        if (params->size() != 1)
+        {
+            bz_sendTextMessagef(BZ_SERVER, playerID, "Syntax: /%s <ip>", command.c_str());
+        }
+        else
+        {
+            std::string ip = params->get(0);
+
+            if (cachedIPs.find(ip) == cachedIPs.end() || !cachedIPs[ip].isProxy)
+            {
+                bz_sendTextMessagef(BZ_SERVER, playerID, "%s was not found on the VPN block list", ip.c_str());
+            }
+            else
+            {
+                cachedIPs[ip].isProxy = false;
+
+                bz_sendTextMessagef(BZ_SERVER, eAdministrators, "%s removed %s from the VPN block list", bz_getPlayerCallsign(playerID), ip.c_str());
+                bz_sendTextMessagef(BZ_SERVER, playerID, "%s removed from the VPN block list", ip.c_str());
+            }
         }
 
         return true;

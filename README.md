@@ -105,6 +105,7 @@ This plug-in implements or overrides the following slash commands.
 | `/reload [vpnblocker]` | setAll | Reload the configuration file this plug-in has loaded |
 | `/vpnblocker` | shutdownserver | See the status of the plug-in and see if it's running correctly |
 | `/vpnblocklist` | playerList | Displays a list of IPs that have been blocked as VPNs |
+| `/vpnunblock` | unban | Remove an IP from the VPN block list loaded in the plug-in's memory |
 
 ## License
 
